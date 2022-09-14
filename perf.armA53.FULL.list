@@ -1,0 +1,130 @@
+
+armv8_cortex_a53/br_immed_retired/0x0D
+armv8_cortex_a53/br_mis_pred/0x10
+armv8_cortex_a53/br_pred/0x12
+armv8_cortex_a53/bus_access/0x19
+armv8_cortex_a53/bus_cycles/0x1D
+armv8_cortex_a53/cid_write_retired/0x0B
+armv8_cortex_a53/cpu_cycles/0x1D
+armv8_cortex_a53/exc_return/0x0A
+armv8_cortex_a53/exc_taken/0x09
+armv8_cortex_a53/inst_retired/0x08
+armv8_cortex_a53/l1d_cache/0x04
+armv8_cortex_a53/l1d_cache_refill/0x03
+armv8_cortex_a53/l1d_cache_wb/0x15
+armv8_cortex_a53/l1d_tlb_refill/0x05
+armv8_cortex_a53/l1i_cache/0x14
+armv8_cortex_a53/l1i_cache_refill/0x01
+armv8_cortex_a53/l1i_tlb_refill/0x02
+armv8_cortex_a53/l2d_cache/0x16
+armv8_cortex_a53/l2d_cache_refill/0x17
+armv8_cortex_a53/l2d_cache_wb/0x18
+armv8_cortex_a53/ld_retired/0x06
+armv8_cortex_a53/mem_access/0x13
+armv8_cortex_a53/memory_error/0x1A
+armv8_cortex_a53/pc_write_retired/0x0C
+armv8_cortex_a53/st_retired/0x07
+armv8_cortex_a53/sw_incr/0x00
+armv8_cortex_a53/unaligned_ldst_retired/0x0F
+# https://developer.arm.com/documentation/ddi0500/j/Performance-Monitor-Unit/AArch64-PMU-register-descriptions/Performance-Monitors-Common-Event-Identification-Register-0?lang=en
+
+branch:
+  br_cond                                           
+       [Conditional branch executed]
+        armv8_cortex_a53/event=0xc9/ 
+  br_cond_mispred                                   
+       [Conditional branch mispredicted]
+        armv8_cortex_a53/event=0xcc/ 
+  br_indirect_mispred                               
+       [Indirect branch mispredicted]
+        armv8_cortex_a53/event=0xca/ 
+  br_indirect_mispred_addr                          
+       [Indirect branch mispredicted because of address miscompare]
+        armv8_cortex_a53/event=0xcb/ 
+  br_indirect_spec                                  
+       [Branch speculatively executed, indirect branch]
+        armv8_cortex_a53/event=0x7a/ 
+
+bus:
+  bus_access_rd                                     
+       [Bus access read]
+        armv8_cortex_a53/event=0x60/ 
+  bus_access_wr                                     
+       [Bus access write]
+        armv8_cortex_a53/event=0x61/ 
+
+cache:
+  ext_snoop                                         
+       [SCU Snooped data from another CPU for this CPU]
+        armv8_cortex_a53/event=0xc8/ 
+  prefetch_linefill                                 
+       [Linefill because of prefetch]
+        armv8_cortex_a53/event=0xc2/ 
+  prefetch_linefill_drop                            
+       [Instruction Cache Throttle occurred]
+        armv8_cortex_a53/event=0xc3/ 
+  read_alloc                                        
+       [Read allocate mode]
+        armv8_cortex_a53/event=0xc5/ 
+  read_alloc_enter                                  
+       [Entering read allocate mode]
+        armv8_cortex_a53/event=0xc4/ 
+
+memory:
+  ext_mem_req                                       
+       [External memory request]
+        armv8_cortex_a53/event=0xc0/ 
+  ext_mem_req_nc                                    
+       [Non-cacheable external memory request]
+        armv8_cortex_a53/event=0xc1/ 
+
+other:
+  exc_fiq                                           
+       [Exception taken, FIQ]
+        armv8_cortex_a53/event=0x87/ 
+  exc_irq                                           
+       [Exception taken, IRQ]
+        armv8_cortex_a53/event=0x86/ 
+  l1d_cache_err                                     
+       [L1 Data Cache (data, tag or dirty) memory error, correctable or non-correctable]
+        armv8_cortex_a53/event=0xd1/ 
+  l1i_cache_err                                     
+       [L1 Instruction Cache (data or tag) memory error]
+        armv8_cortex_a53/event=0xd0/ 
+  pre_decode_err                                    
+       [Pre-decode error]
+        armv8_cortex_a53/event=0xc6/ 
+  tlb_err                                           
+       [TLB memory error]
+        armv8_cortex_a53/event=0xd2/ 
+pipeline:
+  agu_dep_stall                                     
+       [Cycles there is an interlock for a load/store instruction waiting for data to calculate the address in the AGU]
+        armv8_cortex_a53/event=0xe5/ 
+  decode_dep_stall                                  
+       [Cycles the DPU IQ is empty and there is a pre-decode error being processed]
+        armv8_cortex_a53/event=0xe3/ 
+  ic_dep_stall                                      
+       [Cycles the DPU IQ is empty and there is an instruction cache miss being processed]
+        armv8_cortex_a53/event=0xe1/ 
+  iutlb_dep_stall                                   
+       [Cycles the DPU IQ is empty and there is an instruction micro-TLB miss being processed]
+        armv8_cortex_a53/event=0xe2/ 
+  ld_dep_stall                                      
+       [Cycles there is a stall in the Wr stage because of a load miss]
+        armv8_cortex_a53/event=0xe7/ 
+  other_interlock_stall                             
+       [Cycles there is an interlock other than Advanced SIMD/Floating-point instructions or load/store instruction]
+        armv8_cortex_a53/event=0xe4/ 
+  other_iq_dep_stall                                
+       [Cycles that the DPU IQ is empty and that is not because of a recent micro-TLB miss, instruction cache miss or pre-decode error]
+        armv8_cortex_a53/event=0xe0/ 
+  simd_dep_stall                                    
+       [Cycles there is an interlock for an Advanced SIMD/Floating-point operation]
+        armv8_cortex_a53/event=0xe6/ 
+  st_dep_stall                                      
+       [Cycles there is a stall in the Wr stage because of a store]
+        armv8_cortex_a53/event=0xe8/ 
+  stall_sb_full                                     
+       [Data Write operation that stalls the pipeline because the store buffer is full]
+        armv8_cortex_a53/event=0xc7/ 
