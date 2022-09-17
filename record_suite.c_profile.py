@@ -13,10 +13,8 @@ import os
 import errno
   
   
-
-LIBRARY_PATH = "./my_lib.so"
 PERF_COMMAND = "./profiling"
-PERF_LIST_FILENAME = "perf.armA53.list"
+PERF_LIST_FILENAME = "./pmu_lists/perf.armA53.list"
 PERF_REPORT_FILENAME = "benchmarks.out"
 RUN_COUNTER = 0
 PMU_STEPS = 6
