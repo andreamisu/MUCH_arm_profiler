@@ -317,14 +317,14 @@ int discreteLogarithm(int a, int b, int m)
 	return -1;
 }
 
-void benchmarkSetup(){
+void benchmarkSetup(int iterations){
 	srand(time(NULL));
 	int upper = 50;
 	int lower = 10;
-	a = (int*)calloc(100000, sizeof(int));
-	b = (int*)calloc(100000, sizeof(int));
-	m = (int*)calloc(100000, sizeof(int));
-	for(int i; i<100000;i++){
+	a = (int*)calloc(iterations, sizeof(int));
+	b = (int*)calloc(iterations, sizeof(int));
+	m = (int*)calloc(iterations, sizeof(int));
+	for(int i; i<iterations;i++){
 		a[i] = (rand() % (upper - lower + 1)) + lower;
 		b[i] = (rand() % (50 - 10 + 1)) + 10;
 		m[i] = (rand() % (100 - 51 + 1)) + 51;
@@ -353,34 +353,48 @@ void FLOPSBenchmark(struct fth * ft)
 }
 
 int main(int argc, char *argv[]) {
+	char *pmus;
+	int thread = 4;
+	int iterations = 100000;
+    size_t optind;
+	for (optind = 1; optind < argc; optind++) {
+		if(argv[optind][0] != '-')
+			continue;
+		switch (argv[optind][1]) {
+			case 'p': pmus = strtok(argv[optind+1], "/"); break;
+			case 't': thread = atoi(argv[optind+1]); break;
+			case 'i': iterations = atoi(argv[optind+1]); break;
+			default:
+				fprintf(stderr, "Usage: %s [-p] [PMUs] [-t] [threads] [-i] [iterations] \n", argv[0]);
+				exit(EXIT_FAILURE);
+		}   
+	}
 
-    // we do pass 6 PMUs inside argv 
-    if(argc<=1) {
-        printf("not enough arguments");
-        exit(1);
-    }
-    char *ptr = strtok(argv[1], "/");
+	if(pmus==NULL){
+		fprintf(stderr, "Usage: %s -p PMUs [-t] [threads] [-i] [iterations] \n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
     pmu_array = calloc(6,sizeof(int));
     int index = 0;
 
-    while(ptr != NULL && index<6)
+    while(pmus != NULL && index<6)
 	{
-        // printf("found: %s\n", ptr);
-        pmu_array[index++] = (int)strtol(ptr, NULL, 0);
-        // printf("pmu_array: %d\n", pmu_array[index-1]);
-		ptr = strtok(NULL,  "/");
+        //printf("found: %s\n", pmus);
+        pmu_array[index++] = (int)strtol(pmus, NULL, 0);
+        //printf("pmu_array: %d\n", pmu_array[index-1]);
+		pmus = strtok(NULL,  "/");
 	}
     //SETUP PMUs
     int group_fd = setup_pmcs();
 
     //SETUP bench
-    benchmarkSetup();
+    benchmarkSetup(iterations);
 
     //INIT PMU VALUES 
     job_perf_counters_start = pmcs_get_value();
 
     //START BENCHMARK
-    for(int i=0;i<100000;i++){
+    for(int i=0;i<iterations;i++){
 		discreteLogarithm(a[i], b[i], m[i]);
 	}
 

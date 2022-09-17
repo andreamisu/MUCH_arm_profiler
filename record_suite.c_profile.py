@@ -24,7 +24,7 @@ EVENTS_THRESHOLD = 20000
 MUCH_BENCH_PMUS = []
 EXPERIMENTS_LIST = []
 ALLOCABLE_PMUS = 6
-MUCH_RUNS = 2 # 30 is the minimum suggestabele from the paper in order to use Central Limit Theory. Higher the number, More precise the measurement of correlations.
+MUCH_RUNS = 50 # 30 is the minimum suggestabele from the paper in order to use Central Limit Theory. Higher the number, More precise the measurement of correlations.
 
 PMU_GROUPED_HI = {}
 PMU_STATISTICS = {} #key: pmu name
