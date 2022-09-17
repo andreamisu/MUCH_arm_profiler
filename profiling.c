@@ -4,6 +4,10 @@
 #include <linux/perf_event.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <math.h>
+#include <time.h>
+
+
 // #include "performance_counters.h"
 
 
@@ -49,6 +53,8 @@ struct perf_counters {
 };
 
 
+//pca bench
+
 /// Mean vector
 static float *mean;
 /// Standard deviation vector
@@ -67,7 +73,21 @@ static char option;
 /// Number of input rows
 static int n;
 /// Number of input columns
-static int m;
+//static int m;
+
+
+
+// log int 
+
+// array of a
+static int * a;
+
+// array of a
+static int * b;
+
+// array of a
+static int * m;
+
 
 
 
@@ -261,6 +281,72 @@ void *FAdd(struct fth *data)
 		data->fa - data->fb;
 	}
 }
+
+
+int discreteLogarithm(int a, int b, int m)
+{
+	int n = (int) (sqrt (m) + 1);
+
+	// Calculate a ^ n
+	int an = 1;
+	for (int i = 0; i < n; ++i)
+		an = (an * a) % m;
+
+	int *value = calloc(m,sizeof(int));
+
+	// Store all values of a^(n*i) of LHS
+	for (int i = 1, cur = an; i <= n; ++i)
+	{
+		if (value[ cur ] == 0)
+			value[ cur ] = i;
+		cur = (cur * an) % m;
+	}
+
+	for (int i = 0, cur = b; i <= n; ++i)
+	{
+		// Calculate (a ^ j) * b and check
+		// for collision
+		if (value[cur] > 0)
+		{
+			int ans = value[cur] * n - i;
+			if (ans < m)
+				return ans;
+		}
+		cur = (cur * a) % m;
+	}
+	return -1;
+}
+
+void benchmarkSetup(){
+	srand(time(NULL));
+	int upper = 50;
+	int lower = 10;
+	a = (int*)calloc(100000, sizeof(int));
+	b = (int*)calloc(100000, sizeof(int));
+	m = (int*)calloc(100000, sizeof(int));
+	for(int i; i<100000;i++){
+		a[i] = (rand() % (upper - lower + 1)) + lower;
+		b[i] = (rand() % (50 - 10 + 1)) + 10;
+		m[i] = (rand() % (100 - 51 + 1)) + 51;
+	}
+}
+
+// void main(){
+// 	srand(time(NULL));   // Initialization, should only be called once.
+// 	int a = 2, b = 3, m = 5;
+// 	int ret = discreteLogarithm(a, b, m);
+// 	printf("discreteLog: %d\n" , ret);
+	
+// 	int upper = 50;
+// 	int lower = 10;
+// 	a = (rand() % (upper - lower + 1)) + lower;
+// 	b = (rand() % (upper - lower + 1)) + lower;
+// 	m = (rand() % (upper - lower + 1)) + lower;
+// 	ret = discreteLogarithm(a, b, m);
+// 	printf("a: %d\nb: %d\nm: %d\n" , a,b,m);
+// 	printf("discreteLog: %d\n" , ret);
+// }
+
 void FLOPSBenchmark(struct fth * ft)
 {
     FAdd(ft);
@@ -288,19 +374,15 @@ int main(int argc, char *argv[]) {
     int group_fd = setup_pmcs();
 
     //SETUP bench
-    struct fth ft;
-    ft.lc = 1;
-    ft.th_counter = 1;
-    ft.fa = 0.02;
-    ft.fb = 0.2;
-    ft.fc = 0;
-    ft.fd = 0;
+    benchmarkSetup();
 
     //INIT PMU VALUES 
     job_perf_counters_start = pmcs_get_value();
 
     //START BENCHMARK
-    FLOPSBenchmark(&ft);
+    for(int i=0;i<100000;i++){
+		discreteLogarithm(a[i], b[i], m[i]);
+	}
 
     //STOP PMU VALUES
     job_perf_counters_end = pmcs_get_value();
