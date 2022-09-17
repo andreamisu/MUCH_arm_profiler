@@ -1,1 +1,1 @@
-gcc profiling.c -o profiling -lm -g
+gcc profiling.c -o profiling -lm -g -pthread

@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <math.h>
 #include <time.h>
+#include <stdbool.h>
+#include <pthread.h>
 
 
 // #include "performance_counters.h"
@@ -87,6 +89,12 @@ static int * b;
 
 // array of a
 static int * m;
+
+// thread allocated
+static int thread = 4;
+
+// iterations of the bench
+static int iterations = 100000;
 
 
 
@@ -309,15 +317,19 @@ int discreteLogarithm(int a, int b, int m)
 		if (value[cur] > 0)
 		{
 			int ans = value[cur] * n - i;
-			if (ans < m)
+			if (ans < m){
+				free(value);
 				return ans;
+			}
+				
 		}
 		cur = (cur * a) % m;
 	}
+	free(value);
 	return -1;
 }
 
-void benchmarkSetup(int iterations){
+void benchmarkSetup(){
 	srand(time(NULL));
 	int upper = 50;
 	int lower = 10;
@@ -352,11 +364,18 @@ void FLOPSBenchmark(struct fth * ft)
     FAdd(ft);
 }
 
+void*  logarithmBenchmark(){
+	for(int i=0;i<iterations;i++){
+		discreteLogarithm(a[i], b[i], m[i]);
+	}
+}
+
 int main(int argc, char *argv[]) {
 	char *pmus;
-	int thread = 4;
-	int iterations = 100000;
+	thread = 1;
+	iterations = 100000;
     size_t optind;
+	pthread_t* threads;
 	for (optind = 1; optind < argc; optind++) {
 		if(argv[optind][0] != '-')
 			continue;
@@ -388,15 +407,30 @@ int main(int argc, char *argv[]) {
     int group_fd = setup_pmcs();
 
     //SETUP bench
+	if(thread>1){
+		threads = (pthread_t*)malloc(thread * sizeof(pthread_t));
+	}
     benchmarkSetup(iterations);
 
     //INIT PMU VALUES 
     job_perf_counters_start = pmcs_get_value();
 
     //START BENCHMARK
-    for(int i=0;i<iterations;i++){
-		discreteLogarithm(a[i], b[i], m[i]);
+    //SETUP bench
+	if(thread>1){
+		for(int i=0;i<thread;i++){
+			if(pthread_create(&threads[i], NULL, logarithmBenchmark, NULL)){
+				printf("benchmark has failed. aborting.");
+				exit(EXIT_FAILURE);
+			}
+		}
+		for(int i=0;i<thread;i++){
+			pthread_join(threads[i], NULL);
+		}
 	}
+	else
+		logarithmBenchmark();
+
 
     //STOP PMU VALUES
     job_perf_counters_end = pmcs_get_value();
@@ -418,6 +452,12 @@ int main(int argc, char *argv[]) {
 
     //TEARDOWN
     teardown_pmcs();
+	if(thread>1)
+		free(threads);
+	free(pmu_array);
+	free(a);
+	free(b);
+	free(m);
 
     //TODO: using stdout, shall we use another FD? 
     printf("%lu/%lu/%lu/%lu/%lu/%lu",
