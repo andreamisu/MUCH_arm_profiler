@@ -1,3 +1,5 @@
+#define _GNU_SOURCE             /* See feature_test_macros(7) */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +9,8 @@
 #include <math.h>
 #include <time.h>
 #include <pthread.h>
+#include <sched.h>
+#include <sys/resource.h>
 
 
 // #include "performance_counters.h"
@@ -90,10 +94,16 @@ static int * b;
 static int * m;
 
 // thread allocated
-static int thread = 4;
+static int thread = 1;
 
 // iterations of the bench
 static int iterations = 100000;
+
+// iterations of the bench
+static int priority = -1;
+
+// iterations of the bench
+static int isolcpu =-1;
 
 
 
@@ -146,6 +156,7 @@ static int open_pmc_fd(unsigned int pmc_type, unsigned int pmc_config, int group
 
 	if (fd == -1) {
 		perror("Could not open fd for performance counter\n");
+		exit(EXIT_FAILURE);
 	}
 
 	return fd;
@@ -370,28 +381,49 @@ void*  logarithmBenchmark(){
 }
 
 int main(int argc, char *argv[]) {
-	char *pmus;
-	thread = 1;
-	iterations = 100000;
     size_t optind;
 	pthread_t* threads;
+
+	if(argc<2){
+		fprintf(stderr, "Usage: %s [PMUs] [-t] [threads] [-i] [iterations] [-c] [isolcpu] [p] [priority]\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+	
 	for (optind = 1; optind < argc; optind++) {
 		if(argv[optind][0] != '-')
 			continue;
 		switch (argv[optind][1]) {
-			case 'p': pmus = strtok(argv[optind+1], "/"); break;
 			case 't': thread = atoi(argv[optind+1]); break;
 			case 'i': iterations = atoi(argv[optind+1]); break;
+			case 'c': isolcpu = atoi(argv[optind+1]); break;
+			case 'p': priority = atoi(argv[optind+1]); break;
 			default:
-				fprintf(stderr, "Usage: %s [-p] [PMUs] [-t] [threads] [-i] [iterations] \n", argv[0]);
+				fprintf(stderr, "Usage: %s [PMUs] [-t] [threads] [-i] [iterations] [-c] [isolcpu] [-p] [priority]\n", argv[0]);
 				exit(EXIT_FAILURE);
 		}   
 	}
+	char *pmus = strtok(argv[1], "/");
 
-	if(pmus==NULL){
-		fprintf(stderr, "Usage: %s -p PMUs [-t] [threads] [-i] [iterations] \n", argv[0]);
-		exit(EXIT_FAILURE);
+	if(isolcpu!=-1){
+		cpu_set_t my_set;
+		CPU_ZERO(&my_set); 
+		CPU_SET(isolcpu, &my_set); 
+		sched_setaffinity(0, sizeof(cpu_set_t), &my_set);
 	}
+
+	if(priority!=-1){
+		int which = PRIO_PROCESS;
+		id_t pid;
+		int ret;
+
+		pid = getpid();
+		ret = getpriority(which, pid);
+		printf("priority was: %d\n", ret);
+
+		ret = setpriority(which, pid, priority);
+		printf("priority now is: %d\n", ret);
+	}
+	
     pmu_array = calloc(6,sizeof(int));
     int index = 0;
 
