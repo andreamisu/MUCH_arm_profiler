@@ -350,23 +350,25 @@ def drawingData():
 
 
     #scatter plot for correlation
-    # scatter_x = []
-    # scatter_y = []
-    # scatter_n = []
-    # for index,pmu in enumerate(MUCH_BENCH_PMUS):
-    #     for pair in PMU_STATISTICS[pmu]["p"]:
-    #         scatter_x.append(index)
-    #         scatter_y.append(pair["val"])
-    #         scatter_n.append(pair["pair"])
-    # plt.scatter(scatter_x,scatter_y)
-    # plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
-    #    rotation=20)  # Set text labels and properties.
-    # for i, txt in enumerate(scatter_n):
-    #     plt.annotate(txt, (scatter_x[i],scatter_y[i]))
-    # plt.show()
+    corr = plt.figure(num=3, figsize=[10, 10])
+    scatter_x = []
+    scatter_y = []
+    scatter_n = []
+    for index,pmu in enumerate(MUCH_BENCH_PMUS):
+        for pair in PMU_STATISTICS[pmu]["p"]:
+            scatter_x.append(index)
+            scatter_y.append(pair["val"])
+            scatter_n.append(pair["pair"])
+    plt.scatter(scatter_x,scatter_y)
+    plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+       rotation=20)  # Set text labels and properties.
+    for i, txt in enumerate(scatter_n):
+        plt.annotate(txt, (scatter_x[i],scatter_y[i]))
+    plt.rcParams["figure.figsize"] = (20,20)
+    corr.show()
 
 
-    fig = plt.figure()
+    fig = plt.figure(num=2)
     ax = plt.axes(projection='3d')
     scatter_x = []
     scatter_y = []
@@ -381,13 +383,13 @@ def drawingData():
                     scatter_y.append(index2)
                     scatter_n.append(pair["val"])
 
-    ax.scatter3D(xdata, ydata, zdata, c=zdata, cmap='Greens');    
+    ax.scatter3D(scatter_x, scatter_y, scatter_n);    
     ax.legend()
-    ax.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+    plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
        rotation=20)
-    ax.yticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
-       rotation=20)
-    ax.show()
+    plt.yticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS)
+    fig.show()
+    plt.show()
     
 def initalizeExperimentObject(experiment):
     global EXPERIMENTS_RESULTS_TABLE
