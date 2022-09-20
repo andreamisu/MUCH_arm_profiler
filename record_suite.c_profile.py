@@ -12,8 +12,13 @@ from ctypes import *
 import os
 import errno
 import matplotlib.pyplot as plt
-from scipy.stats import pearsonr 
-  
+from scipy.stats import pearsonr
+from mpl_toolkits import mplot3d
+import pickle 
+
+
+BENCHMARK_STATISTICS_FILE = './benchmark_statistics.dump'
+BENCHMARK_PMU_FILE = './benchmark_pmus.dump'
 PERF_COMMAND = "./profiling"
 PERF_LIST_FILENAME = "./pmu_lists/perf.armA53.list"
 PERF_REPORT_FILENAME = "benchmarks.out"
@@ -43,7 +48,7 @@ EFFICIENT_PMUS_ALLOCATION = 6 # EPA => # MUCH_BENCH_PMUS - (EPA + (EPA-1 * EPA-1
 MUCH_EXECUTED_ITERATION = {} #each index i refers to MUCH_BENCH_PMUS[i], and basically contains which PMUs has been already checked with the given event monitor.
 
 def writeLogsFile(out, pmuSelected):
-    global table, RUN_COUNTER, MUCH_BENCH_PMUS
+    global table, RUN_COUNTER, MUCH_BENCH_PMUS, console
     # write to benchmark output log
     fileObject = open(PERF_REPORT_FILENAME, 'a')
     fileObject.write(out)
@@ -88,13 +93,14 @@ def initLogs():
 
 
 def main():
-    global table, RUN_COUNTER, args, MUCH_BENCH_PMUS, MUCH_EXECUTED_ITERATION, EXPERIMENTS_RESULTS_TABLE
+    global table, RUN_COUNTER, args, MUCH_BENCH_PMUS, MUCH_EXECUTED_ITERATION, EXPERIMENTS_RESULTS_TABLE, console
     
     if args.sudo:
         if not getSudoPermissions():
             print("User not getting sudo permissions, exit..")
             sys.exit(-1)
 
+    
     initLogs()
     console = Console()
     perfList = []
@@ -147,7 +153,11 @@ def main():
             len(MUCH_EXECUTED_ITERATION[pivotPMU])
         except KeyError:
             MUCH_EXECUTED_ITERATION[pivotPMU] = []
-        while len(MUCH_EXECUTED_ITERATION[pivotPMU]) < len(MUCH_BENCH_PMUS):
+        while len(set(MUCH_EXECUTED_ITERATION[pivotPMU])) < len(MUCH_BENCH_PMUS):
+            console.print("pivot: %s" % pivotPMU)
+            console.print("MUCH_EXECUTED_ITERATION[pivotPMU]: %s" % MUCH_EXECUTED_ITERATION[pivotPMU])
+            console.print("len: %d su %d" % (len(MUCH_EXECUTED_ITERATION[pivotPMU]), len(MUCH_BENCH_PMUS)))
+            
             chosenMuchPmus = [pivotPMU]
 
             #TODO: Shall we take into account also multiple iteration on tuple of PMUs repeteing?
@@ -166,7 +176,8 @@ def main():
                     MUCH_EXECUTED_ITERATION[x] = []
                 MUCH_EXECUTED_ITERATION[x].extend(chosenMuchPmus)
             EXPERIMENTS_LIST.append(chosenMuchPmus)
-
+        console.print("should be FULL >> len: %d su %d" % (len(MUCH_EXECUTED_ITERATION[pivotPMU]), len(MUCH_BENCH_PMUS)))
+        console.print("MUCH_EXECUTED_ITERATION[%s]: %s" % (pivotPMU, MUCH_EXECUTED_ITERATION[pivotPMU]))
     logging.debug("experiments: \n%s" % (str(EXPERIMENTS_LIST)))
 
     # starts experiments
@@ -274,29 +285,110 @@ def main():
 
                 console.print("%s + %s:\no_pair > %s \np: %s" % (pmu_couple[0], pmu_couple[1], str(p * PMU_STATISTICS[pmu_couple[0]]["o"] * PMU_STATISTICS[pmu_couple[1]]["o"]), str(p)))
                 #TODO: calculus empirical correlation matrix  S^
-                #The correlation coefficient r is calculated by dividing the covariance (cov(x,y)) 
-                # of two variables (x,y) by the product of the standard deviations of the variables (sx, sy). 
-                # Because of this division, the correlation coefficient becomes invariant vis-à-vis a change 
-                # in the scale or a linear transformation, and it can take a value between -1 and 1.
+
+                #http://users.stat.umn.edu/~helwig/notes/datamat-Notes.pdf
+
+    if(args.write):
+        file_pi = open(BENCHMARK_STATISTICS_FILE, 'wb') 
+        pickle.dump(PMU_STATISTICS, file_pi)
+        file_pi2 = open(BENCHMARK_PMU_FILE, 'wb') 
+        pickle.dump(MUCH_BENCH_PMUS, file_pi2)
+
+    drawingData()
+
     
+
+def drawingData():
+    global PMU_STATISTICS, MUCH_BENCH_PMUS, console
+
+    console.print(PMU_STATISTICS)
+    console.print(MUCH_BENCH_PMUS)
+    #Correlation matrix S
+    correlationMap = []
+    for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
+        console.print("pmu1: %s" % pmu1)
+        correlationLine = []
+        for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
+            flag=False
+            console.print("pmu2: %s" % pmu2)
+            if pmu1==pmu2:
+                console.print("same")
+                flag=True
+                correlationLine.append(float(1)) #correlation between same values is 1
+            else:
+                for corr in PMU_STATISTICS[pmu2]['p']:
+                    if corr['pair'] == pmu1:
+                        correlationLine.append(corr['val'])
+                        flag=True
+                if(not flag):
+                    console.print("NOT FOUND: %s, %s" %(pmu1, pmu2))
+        correlationMap.append(correlationLine)
+    console.print(correlationMap)
+    correlationMatrix = numpy.matrix(correlationMap, dtype=float)
+    console.print(correlationMatrix)
+    plt.matshow(correlationMatrix)
+
+    #Covariance matrix Ʃ
+    covarianceMap = []
+    for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
+        console.print("pmu1: %s" % pmu1)
+        covarianceLine = []
+        for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
+            console.print("pmu2: %s" % pmu2)
+            if pmu1==pmu2:
+                covarianceLine.append(math.pow(PMU_STATISTICS[pmu2]['o'], 2))
+            else:
+                for corr in PMU_STATISTICS[pmu2]['o_pair']:
+                    if corr['pair'] == pmu1:
+                        covarianceLine.append(corr['val'])
+                        continue
+        covarianceMap.append(covarianceLine)
+    covarianceMatrix = numpy.matrix(covarianceMap, dtype=object)
+    console.print(covarianceMatrix)
+    
+
+
+
     #scatter plot for correlation
+    # scatter_x = []
+    # scatter_y = []
+    # scatter_n = []
+    # for index,pmu in enumerate(MUCH_BENCH_PMUS):
+    #     for pair in PMU_STATISTICS[pmu]["p"]:
+    #         scatter_x.append(index)
+    #         scatter_y.append(pair["val"])
+    #         scatter_n.append(pair["pair"])
+    # plt.scatter(scatter_x,scatter_y)
+    # plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+    #    rotation=20)  # Set text labels and properties.
+    # for i, txt in enumerate(scatter_n):
+    #     plt.annotate(txt, (scatter_x[i],scatter_y[i]))
+    # plt.show()
+
+
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
     scatter_x = []
     scatter_y = []
     scatter_n = []
-    for index,pmu in enumerate(MUCH_BENCH_PMUS):
-        for pair in PMU_STATISTICS[pmu]["p"]:
-            scatter_x.append(index)
-            scatter_y.append(pair["val"])
-            scatter_n.append(pair["pair"])
-    plt.scatter(scatter_x,scatter_y)
-    plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
-       rotation=20)  # Set text labels and properties.
-    for i, txt in enumerate(scatter_n):
-        plt.annotate(txt, (scatter_x[i],scatter_y[i]))
-    plt.show()
+    for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
+        for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
+            if index1 == index2:
+                continue #same PMU
+            for pair in PMU_STATISTICS[pmu1]["p"]:
+                if(pair["pair"] == pmu2):
+                    scatter_x.append(index1)
+                    scatter_y.append(index2)
+                    scatter_n.append(pair["val"])
+
+    ax.scatter3D(xdata, ydata, zdata, c=zdata, cmap='Greens');    
+    ax.legend()
+    ax.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+       rotation=20)
+    ax.yticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+       rotation=20)
+    ax.show()
     
-
-
 def initalizeExperimentObject(experiment):
     global EXPERIMENTS_RESULTS_TABLE
     EXPERIMENTS_RESULTS_TABLE.append({
@@ -327,6 +419,15 @@ def collectMUCHValues(report, indexExperiment, experiment):
     EXPERIMENTS_RESULTS_TABLE[indexExperiment]["data"].append(pmuReportList)
     fileObject.close()
 
+def loadObjects():
+    global PMU_STATISTICS, MUCH_BENCH_PMUS, console
+
+    file_pi1 = open(BENCHMARK_STATISTICS_FILE, 'rb') 
+    PMU_STATISTICS = pickle.load(file_pi1)
+    file_pi2 = open(BENCHMARK_PMU_FILE, 'rb') 
+    MUCH_BENCH_PMUS = pickle.load(file_pi2)
+    console = Console()
+
 
 def checkComplementaryPMUIterations(chosenMuchPmus, secondaryPMU):
     global MUCH_EXECUTED_ITERATION
@@ -356,6 +457,23 @@ if __name__ == "__main__":
                        default=False,
                        help='debug prints')
 
+    parser.add_argument('-w',
+                       '--write',
+                       dest="write",
+                       action='store_true',
+                       default=False,
+                       help='write benchmarks to disk')
+
+    parser.add_argument('-l',
+                       '--load',
+                       dest="load",
+                       action='store_true',
+                       default=False,
+                       help='load benchmarks from disk')
     args = parser.parse_args()
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG if args.debug == True else logging.ERROR)
-    main()
+    if(not args.load):
+        main()
+    else:
+        loadObjects()
+        drawingData()
