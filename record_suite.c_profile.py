@@ -1,4 +1,4 @@
-import sys
+import sys, logging
 from rich.table import Table
 from rich.console import Console
 from datetime import datetime
@@ -11,7 +11,8 @@ from utils import *
 from ctypes import *
 import os
 import errno
-  
+import matplotlib.pyplot as plt
+from scipy.stats import pearsonr 
   
 PERF_COMMAND = "./profiling"
 PERF_LIST_FILENAME = "./pmu_lists/perf.armA53.list"
@@ -166,7 +167,7 @@ def main():
                 MUCH_EXECUTED_ITERATION[x].extend(chosenMuchPmus)
             EXPERIMENTS_LIST.append(chosenMuchPmus)
 
-    console.print("experiments: \n%s" % (str(EXPERIMENTS_LIST)))
+    logging.debug("experiments: \n%s" % (str(EXPERIMENTS_LIST)))
 
     # starts experiments
     for index in range(0,len(EXPERIMENTS_LIST)):
@@ -191,30 +192,32 @@ def main():
             if h not in EXPERIMENTS_LIST[index]:
                 # pmu (h) not in experiment
                 continue
-            console.print("PMU %s is in experiment: %s" % (h, str(EXPERIMENTS_LIST[index])))
+            logging.debug("PMU %s is in experiment: %s" % (h, str(EXPERIMENTS_LIST[index])))
             for data in EXPERIMENTS_RESULTS_TABLE[index]["data"]:
                 for subexp in data:
-                    console.print("subexp[pmu]: %s" % (subexp["pmu"]))
+                    logging.debug("subexp[pmu]: %s" % (subexp["pmu"]))
                     if subexp["pmu"] == h:
                         PMU_GROUPED_HI[h].append(int(subexp["events"].replace(",","")))
-                        console.print("events: %s" % (subexp["events"]))
+                        logging.debug("events: %s" % (subexp["events"]))
 
             PMU_STATISTICS[h] = {
                 "u": numpy.mean(PMU_GROUPED_HI[h]),
-                "o": numpy.var(PMU_GROUPED_HI[h]) #variance of hi subexperiment in PMU_GROUPED_HI[h] on u mean
+                "o": numpy.std(PMU_GROUPED_HI[h]), #standard deviation of hi subexperiment in PMU_GROUPED_HI[h] on u mean
+                "o2": numpy.var(PMU_GROUPED_HI[h]) #variance of hi subexperiment in PMU_GROUPED_HI[h] on u mean
             }
 
             console.print("PMU_GROUPED_HI : %s" % (PMU_GROUPED_HI[h]))
             console.print("PMU expectedValue (u) value: %s" % str(PMU_STATISTICS[h]["u"]))
-            console.print("PMU variance (o^2) value: %s" % str(PMU_STATISTICS[h]["o"]))
-            console.print("PMU variance (o) value: %s" % str(math.sqrt(PMU_STATISTICS[h]["o"])))
+            console.print("PMU variance (o) value: %s" % str(PMU_STATISTICS[h]["o"]))
+            console.print("PMU variance (o2) value: %s" % str(PMU_STATISTICS[h]["o2"]))
 
     # empirical correlation between 2 hems  ρˆij 
     for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):
         for index in range(0,len(EXPERIMENTS_LIST)):
             #experiment in which both are present
             if pmu_couple[0] in EXPERIMENTS_LIST[index] and pmu_couple[1] in EXPERIMENTS_LIST[index]:
-                nominator = []
+                pmu1 = []
+                pmu2 = []
                 p = 0
 
                 try:
@@ -242,9 +245,11 @@ def main():
                     if x == -1 or y == -1:
                         console.print("Error: didn't find empirical correlation")
                         return
-                    nominator.append((x - PMU_STATISTICS[pmu_couple[0]]["u"]) * (y - PMU_STATISTICS[pmu_couple[1]]["u"]))
-
-                p = numpy.mean(nominator) / ( PMU_STATISTICS[pmu_couple[0]]["o"] * PMU_STATISTICS[pmu_couple[1]]["o"])
+                    pmu1.append(x)
+                    pmu2.append(y)
+                # pearson correlation
+                p, _ = pearsonr(pmu1, pmu2)
+                console.print('%s + %s correlation: %f' % (pmu_couple[0], pmu_couple[1],p))
 
                 PMU_STATISTICS[pmu_couple[0]]["o_pair"].append({
                     "pair" : pmu_couple[1],
@@ -273,13 +278,23 @@ def main():
                 # of two variables (x,y) by the product of the standard deviations of the variables (sx, sy). 
                 # Because of this division, the correlation coefficient becomes invariant vis-à-vis a change 
                 # in the scale or a linear transformation, and it can take a value between -1 and 1.
-
-
-
-
-
-
-
+    
+    #scatter plot for correlation
+    scatter_x = []
+    scatter_y = []
+    scatter_n = []
+    for index,pmu in enumerate(MUCH_BENCH_PMUS):
+        for pair in PMU_STATISTICS[pmu]["p"]:
+            scatter_x.append(index)
+            scatter_y.append(pair["val"])
+            scatter_n.append(pair["pair"])
+    plt.scatter(scatter_x,scatter_y)
+    plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+       rotation=20)  # Set text labels and properties.
+    for i, txt in enumerate(scatter_n):
+        plt.annotate(txt, (scatter_x[i],scatter_y[i]))
+    plt.show()
+    
 
 
 def initalizeExperimentObject(experiment):
@@ -334,11 +349,13 @@ if __name__ == "__main__":
                        default=False,
                        help='exec command with sudo capabilities')
 
-    # parser.add_argument('-v',
-    #                    '--verbose',
-    #                     dest="verbose",
-    #                     action='store_true',
-    #                     help='debug prints')
+    parser.add_argument('-d',
+                       '--debug',
+                       dest="debug",
+                       action='store_true',
+                       default=False,
+                       help='debug prints')
+
     args = parser.parse_args()
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG if args.debug == True else logging.ERROR)
     main()
- 
