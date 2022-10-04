@@ -12,13 +12,14 @@ from ctypes import *
 import os
 import errno
 import matplotlib.pyplot as plt
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, multivariate_normal, norm
 from mpl_toolkits import mplot3d
 import pickle 
 
 
 BENCHMARK_STATISTICS_FILE = './benchmark_statistics.dump'
 BENCHMARK_PMU_FILE = './benchmark_pmus.dump'
+PMU_GROUPED_HI_FILE = './pmu_grouped.dump'
 PERF_COMMAND = "./profiling"
 PERF_LIST_FILENAME = "./pmu_lists/perf.armA53.list"
 PERF_REPORT_FILENAME = "benchmarks.out"
@@ -154,12 +155,7 @@ def main():
         except KeyError:
             MUCH_EXECUTED_ITERATION[pivotPMU] = []
         while len(set(MUCH_EXECUTED_ITERATION[pivotPMU])) < len(MUCH_BENCH_PMUS):
-            console.print("pivot: %s" % pivotPMU)
-            console.print("MUCH_EXECUTED_ITERATION[pivotPMU]: %s" % MUCH_EXECUTED_ITERATION[pivotPMU])
-            console.print("len: %d su %d" % (len(MUCH_EXECUTED_ITERATION[pivotPMU]), len(MUCH_BENCH_PMUS)))
-            
             chosenMuchPmus = [pivotPMU]
-
             #TODO: Shall we take into account also multiple iteration on tuple of PMUs repeteing?
             for secondaryPMU in list(filter(lambda elm: elm not in MUCH_EXECUTED_ITERATION[pivotPMU], MUCH_BENCH_PMUS)):
                 if secondaryPMU == pivotPMU:
@@ -176,8 +172,6 @@ def main():
                     MUCH_EXECUTED_ITERATION[x] = []
                 MUCH_EXECUTED_ITERATION[x].extend(chosenMuchPmus)
             EXPERIMENTS_LIST.append(chosenMuchPmus)
-        console.print("should be FULL >> len: %d su %d" % (len(MUCH_EXECUTED_ITERATION[pivotPMU]), len(MUCH_BENCH_PMUS)))
-        console.print("MUCH_EXECUTED_ITERATION[%s]: %s" % (pivotPMU, MUCH_EXECUTED_ITERATION[pivotPMU]))
     logging.debug("experiments: \n%s" % (str(EXPERIMENTS_LIST)))
 
     # starts experiments
@@ -292,7 +286,10 @@ def main():
         file_pi = open(BENCHMARK_STATISTICS_FILE, 'wb') 
         pickle.dump(PMU_STATISTICS, file_pi)
         file_pi2 = open(BENCHMARK_PMU_FILE, 'wb') 
-        pickle.dump(MUCH_BENCH_PMUS, file_pi2)
+        pickle.dump(MUCH_BENCH_PMUS, file_pi2)     
+        file_pi3 = open(PMU_GROUPED_HI_FILE, 'wb') 
+        pickle.dump(PMU_GROUPED_HI, file_pi3)
+        
 
     drawingData()
 
@@ -328,7 +325,7 @@ def drawingData():
     console.print(correlationMatrix)
     plt.matshow(correlationMatrix)
 
-    #Covariance matrix Ʃ
+    #Covariance matrix Ʃˆ
     covarianceMap = []
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
         console.print("pmu1: %s" % pmu1)
@@ -345,9 +342,76 @@ def drawingData():
         covarianceMap.append(covarianceLine)
     covarianceMatrix = numpy.matrix(covarianceMap, dtype=object)
     console.print(covarianceMatrix)
+
+
+    #multivariate normal MVGD  𝑋 ∼ N𝑛ℎ(𝜇,ˆ Σˆ)
+    # mean_array =  list(map(lambda elm: elm['u'], PMU_STATISTICS))
+    # mvgd = multivariate_normal.pdf(mean=mean_array, cov=covarianceMatrix)
+    # console.print(mvgd)
+
+    #Application of copula theory
+    for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
+        num = len(PMU_GROUPED_HI[pmu1])
+        steps = numpy.linspace(0,1,num+1,endpoint=False).tolist() 
+        steps.remove(0)
+        meanSteps = numpy.mean(steps)
+        console.print("num is %d" % num)
+        console.print("steps are %s" % str(steps))
+
+        # A uniform sample can be transformed into a
+        # Gaussian sample by applying the inverse function 
+        # of the cumulative distribution function of a standard Gaussian distribution, Φ
+
+        # Percent point function (inverse of cdf — percentiles).
+        mvgdSampled = list(map(lambda elm: norm.ppf(elm, loc=0, scale=1), steps)) 
+        console.print(mvgdSampled)
+        PMU_STATISTICS[pmu1]['ppf'] = {
+                "val" : mvgdSampled,
+                "u": numpy.mean(mvgdSampled),
+                "o": numpy.std(mvgdSampled), #standard deviation
+                "o2": numpy.var(mvgdSampled) #variance
+        }
+
+    for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):
+        # Traceback (most recent call last):
+        # File "/home/pi/pmu_eval_suite/record_suite.c_profile.py", line 545, in <module>
+        #     drawingData()
+        # File "/home/pi/pmu_eval_suite/record_suite.c_profile.py", line 376, in drawingData
+        #     p, _ = pearsonr(PMU_STATISTICS[pmu_couple[0]]['ppf']['val'], PMU_STATISTICS[pmu_couple[1]]['ppf']['val'])
+        # File "/home/pi/.pyenv/versions/3.9.2/lib/python3.9/site-packages/scipy/stats/_stats_py.py", line 4412, in pearsonr
+        #     raise ValueError('x and y must have the same length.')
+        # ValueError: x and y must have the same length.
+        
+        p, _ = pearsonr(PMU_STATISTICS[pmu_couple[0]]['ppf']['val'], PMU_STATISTICS[pmu_couple[1]]['ppf']['val'])
+        PMU_STATISTICS[pmu_couple[0]]['ppf']["p"].append({
+            "pair" : pmu_couple[1],
+            "val": p
+        })
+
+        PMU_STATISTICS[pmu_couple[1]]['ppf']["p"].append({
+            "pair" : pmu_couple[0],
+            "val": p
+        })
+        PMU_STATISTICS[pmu_couple[0]]['ppf']["o_pair"].append({
+            "pair" : pmu_couple[1],
+            "val": p * PMU_STATISTICS[pmu_couple[0]]['ppf']["o"] * PMU_STATISTICS[pmu_couple[1]]['ppf']["o"]
+        })
+        PMU_STATISTICS[pmu_couple[1]]['ppf']["o_pair"].append({
+            "pair" : pmu_couple[0],
+            "val": p * PMU_STATISTICS[pmu_couple[0]]['ppf']["o"] * PMU_STATISTICS[pmu_couple[1]]['ppf']["o"]
+        })
+        
+
+
+               
     
+    # p, _ = pearsonr(pmu1, pmu2)
+    # console.print('%s + %s correlation: %f' % (pmu_couple[0], pmu_couple[1],p))
 
-
+    # PMU_STATISTICS[pmu_couple[0]]["o_pair"].append({
+    #     "pair" : pmu_couple[1],
+    #     "val": p * PMU_STATISTICS[pmu_couple[0]]["o"] * PMU_STATISTICS[pmu_couple[1]]["o"]
+    # })
 
     #scatter plot for correlation
     corr = plt.figure(num=3, figsize=[10, 10])
@@ -390,6 +454,13 @@ def drawingData():
     plt.yticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS)
     fig.show()
     plt.show()
+
+
+
+
+
+    #pts = np.random.multivariate_normal(0^,  Σˆ0, size=numeri rilevamenti hi HEM)
+
     
 def initalizeExperimentObject(experiment):
     global EXPERIMENTS_RESULTS_TABLE
@@ -422,12 +493,14 @@ def collectMUCHValues(report, indexExperiment, experiment):
     fileObject.close()
 
 def loadObjects():
-    global PMU_STATISTICS, MUCH_BENCH_PMUS, console
+    global PMU_STATISTICS, MUCH_BENCH_PMUS, console, PMU_GROUPED_HI
 
     file_pi1 = open(BENCHMARK_STATISTICS_FILE, 'rb') 
     PMU_STATISTICS = pickle.load(file_pi1)
     file_pi2 = open(BENCHMARK_PMU_FILE, 'rb') 
-    MUCH_BENCH_PMUS = pickle.load(file_pi2)
+    MUCH_BENCH_PMUS = pickle.load(file_pi2)   
+    file_pi3 = open(PMU_GROUPED_HI_FILE, 'rb') 
+    PMU_GROUPED_HI = pickle.load(file_pi3)
     console = Console()
 
 
