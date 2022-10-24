@@ -342,12 +342,17 @@ def drawingData():
         covarianceMap.append(covarianceLine)
     covarianceMatrix = numpy.matrix(covarianceMap, dtype=object)
     console.print(covarianceMatrix)
-
+    
 
     #multivariate normal MVGD  𝑋 ∼ N𝑛ℎ(𝜇,ˆ Σˆ)
-    # mean_array =  list(map(lambda elm: elm['u'], PMU_STATISTICS))
+    console.print(PMU_STATISTICS)
+    mean_array = []
+    for pmu in MUCH_BENCH_PMUS:
+        mean_array.append(PMU_STATISTICS[pmu]['u'])
     # mvgd = multivariate_normal.pdf(mean=mean_array, cov=covarianceMatrix)
-    # console.print(mvgd)
+    mvgd = multivariate_normal(mean=mean_array, cov=covarianceMatrix)
+    console.print(mvgd)
+    exit()
 
     #Application of copula theory
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
