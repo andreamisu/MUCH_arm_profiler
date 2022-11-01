@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import pearsonr, multivariate_normal, norm
 from mpl_toolkits import mplot3d
 import pickle 
-
+import re
 
 BENCHMARK_STATISTICS_FILE = './benchmark_statistics.dump'
 BENCHMARK_PMU_FILE = './benchmark_pmus.dump'
@@ -24,7 +24,7 @@ PERF_COMMAND = "./profiling"
 PERF_LIST_FILENAME = "./pmu_lists/perf.armA53.list"
 PERF_REPORT_FILENAME = "benchmarks.out"
 RUN_COUNTER = 0
-PMU_STEPS = 6
+PMU_STEPS = 5
 RAW_PMU = {} #key: pmu name / value: hex raw pmu
 RUNS_FAILED = []
 EVENTS_THRESHOLD = 20000
@@ -44,9 +44,29 @@ EXPERIMENTS_RESULTS_TABLE = []  #main obejct in which store results from experim
 #     data: [] array with every experiment data inside
 # }
 
-EFFICIENT_PMUS_ALLOCATION = 6 # EPA => # MUCH_BENCH_PMUS - (EPA + (EPA-1 * EPA-1)) =(or near) 0      so in the case of 30 allocable valid MUCH PMUs, EPA is 6 as 6 + 5 * 5 = 31     this is mostly helpful for correlation runs
+EFFICIENT_PMUS_ALLOCATION = 5 # EPA => # MUCH_BENCH_PMUS - (EPA + (EPA-1 * EPA-1)) =(or near) 0      so in the case of 30 allocable valid MUCH PMUs, EPA is 6 as 6 + 5 * 5 = 31     this is mostly helpful for correlation runs
 
 MUCH_EXECUTED_ITERATION = {} #each index i refers to MUCH_BENCH_PMUS[i], and basically contains which PMUs has been already checked with the given event monitor.
+
+def pmu_allocation(MUCH_BENCH_PMUS, max):
+    numPMU = len(MUCH_BENCH_PMUS)
+    i = 0
+    while (math.pow(i, 2) - i + 1 < numPMU):
+        print(math.pow(i, 2) - i + 1)
+        i += 1
+    if i == 0:
+        print('error calculating pmu_allocation. Shutting down...')
+        exit()
+    elif math.pow(i, 2) - i + 1 == numPMU:
+        return MUCH_BENCH_PMUS
+    else:
+        count = 0
+        while(math.pow(i, 2) - i + 1 != len(MUCH_BENCH_PMUS)):
+            MUCH_BENCH_PMUS.append('fakePMU%d' % count)
+            print(count)
+            count += 1
+        return MUCH_BENCH_PMUS
+
 
 def writeLogsFile(out, pmuSelected):
     global table, RUN_COUNTER, MUCH_BENCH_PMUS, console
@@ -149,6 +169,12 @@ def main():
         console.print("Failed runs: " + str(RUNS_FAILED), style="red")
     console.print("check report file in " + PERF_REPORT_FILENAME)
     console.print("number of PMUs available for MUCH evaluation: %d" % (len(MUCH_BENCH_PMUS)))
+    
+
+    # Algorithm for best allocation on given PMUs
+    MUCH_BENCH_PMUS = pmu_allocation(MUCH_BENCH_PMUS, ALLOCABLE_PMUS)
+    console.print("number of PMUs available for MUCH evaluation: %d" % (len(MUCH_BENCH_PMUS)))
+    console.print(MUCH_BENCH_PMUS)
     for pivotPMU in MUCH_BENCH_PMUS:
         try:
             len(MUCH_EXECUTED_ITERATION[pivotPMU])
@@ -174,6 +200,12 @@ def main():
             EXPERIMENTS_LIST.append(chosenMuchPmus)
     logging.debug("experiments: \n%s" % (str(EXPERIMENTS_LIST)))
 
+    for idx,elm in enumerate(EXPERIMENTS_LIST):
+        k = [y for y in elm if "fakePMU" not in y]
+        EXPERIMENTS_LIST[idx] = k
+
+    MUCH_BENCH_PMUS = [y for y in MUCH_BENCH_PMUS if "fakePMU" not in y]
+
     # starts experiments
     for index in range(0,len(EXPERIMENTS_LIST)):
         initalizeExperimentObject(EXPERIMENTS_LIST[index])
@@ -191,6 +223,7 @@ def main():
                     console.print("unexpected error")
                     return -1
 
+    
     for h in MUCH_BENCH_PMUS:
         PMU_GROUPED_HI[h] = []
         for index in range(0,len(EXPERIMENTS_LIST)):
@@ -540,16 +573,15 @@ if __name__ == "__main__":
     parser.add_argument('-w',
                        '--write',
                        dest="write",
-                       action='store_true',
-                       default=False,
+                       type=str,
                        help='write benchmarks to disk')
 
     parser.add_argument('-l',
                        '--load',
                        dest="load",
-                       action='store_true',
-                       default=False,
-                       help='load benchmarks from disk')
+                       type=str,
+                       help='load benchmarks results from disk')
+
     args = parser.parse_args()
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG if args.debug == True else logging.ERROR)
     if(not args.load):
