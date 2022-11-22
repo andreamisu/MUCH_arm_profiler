@@ -252,37 +252,45 @@ def drawingData():
                         PMU_GROUPED_HI[h].append(int(subexp["events"].replace(",","")))
                         logging.debug("events: %s" % (subexp["events"]))
 
-            PMU_STATISTICS[h] = {
-                "u": numpy.mean(PMU_GROUPED_HI[h]),
-                "o": numpy.std(PMU_GROUPED_HI[h]), #standard deviation of hi subexperiment in PMU_GROUPED_HI[h] on u mean
-                "o2": numpy.var(PMU_GROUPED_HI[h]) #variance of hi subexperiment in PMU_GROUPED_HI[h] on u mean
-            }
+        PMU_STATISTICS[h] = {
+            "u": numpy.mean(PMU_GROUPED_HI[h], dtype = numpy.float64),
+            "o": numpy.std(PMU_GROUPED_HI[h], dtype = numpy.float64), #standard deviation of hi subexperiment in PMU_GROUPED_HI[h] on u mean
+            "o2": numpy.var(PMU_GROUPED_HI[h], dtype = numpy.float64), #variance of hi subexperiment in PMU_GROUPED_HI[h] on u mean
+            "o_pair": [],
+            "p": []        
+        }
 
-            console.print("PMU_GROUPED_HI : %s" % (PMU_GROUPED_HI[h]))
-            console.print("PMU expectedValue (u) value: %s" % str(PMU_STATISTICS[h]["u"]))
-            console.print("PMU variance (o) value: %s" % str(PMU_STATISTICS[h]["o"]))
-            console.print("PMU variance (o2) value: %s" % str(PMU_STATISTICS[h]["o2"]))
+        console.print("++++++++++++++++++++++++")
+        console.print("PMU : %s" % (h))
+        console.print("PMU_GROUPED_HI : %s" % (PMU_GROUPED_HI[h]))
+        console.print("PMU expectedValue (u) value: %s" % str(PMU_STATISTICS[h]["u"]))
+        console.print("PMU standard deviation (o) value: %s" % str(PMU_STATISTICS[h]["o"]))
+        console.print("PMU variance (o2) value: %s" % str(PMU_STATISTICS[h]["o2"]))
 
     # empirical correlation between 2 hems  ρˆij 
     for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):
         for index in range(0,len(EXPERIMENTS_LIST)):
             #experiment in which both are present
             if pmu_couple[0] in EXPERIMENTS_LIST[index] and pmu_couple[1] in EXPERIMENTS_LIST[index]:
+
+                console.print("++++++++++++++++++++++++")
+                console.print("correlation exp: %s + %s" % (pmu_couple[0], pmu_couple[1]))
+                console.print("exp: %s" % str(EXPERIMENTS_LIST[index]))
                 pmu1 = []
                 pmu2 = []
                 p = 0
 
-                try:
-                    len(PMU_STATISTICS[pmu_couple[0]]["o_pair"])
-                except KeyError:
-                    PMU_STATISTICS[pmu_couple[0]]["o_pair"] = []
-                    PMU_STATISTICS[pmu_couple[0]]["p"] = []
+                # try:
+                #     len(PMU_STATISTICS[pmu_couple[0]]["o_pair"])
+                # except KeyError:
+                #     PMU_STATISTICS[pmu_couple[0]]["o_pair"] = []
+                #     PMU_STATISTICS[pmu_couple[0]]["p"] = []
 
-                try:
-                    len(PMU_STATISTICS[pmu_couple[1]]["o_pair"])
-                except KeyError:
-                    PMU_STATISTICS[pmu_couple[1]]["o_pair"] = []
-                    PMU_STATISTICS[pmu_couple[1]]["p"] = []
+                # try:
+                #     len(PMU_STATISTICS[pmu_couple[1]]["o_pair"])
+                # except KeyError:
+                #     PMU_STATISTICS[pmu_couple[1]]["o_pair"] = []
+                #     PMU_STATISTICS[pmu_couple[1]]["p"] = []
 
                 for data in EXPERIMENTS_RESULTS_TABLE[index]["data"]:
                     #console.print("data: %s" % data)
@@ -324,39 +332,38 @@ def drawingData():
                     "val": p
                 })
 
+                console.print("pmu %s o: %f" %(pmu_couple[0], PMU_STATISTICS[pmu_couple[0]]["o"]))
+                console.print("pmu %s o: %f" %(pmu_couple[1], PMU_STATISTICS[pmu_couple[1]]["o"]))
                 console.print("%s + %s:\no_pair > %s \np: %s" % (pmu_couple[0], pmu_couple[1], str(p * PMU_STATISTICS[pmu_couple[0]]["o"] * PMU_STATISTICS[pmu_couple[1]]["o"]), str(p)))
-                #TODO: calculus empirical correlation matrix  S^
 
-                #http://users.stat.umn.edu/~helwig/notes/datamat-Notes.pdf
-
-    # console.print(PMU_STATISTICS)
-    # console.print(MUCH_BENCH_PMUS)
+                
+    #http://users.stat.umn.edu/~helwig/notes/datamat-Notes.pdf
     #Correlation matrix S
     correlationMap = []
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
         console.print("pmu1: %s" % pmu1)
         correlationLine = []
         for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-            flag=False
             console.print("pmu2: %s" % pmu2)
             if pmu1==pmu2:
                 console.print("same")
-                flag=True
                 correlationLine.append(float(1)) #correlation between same values is 1
             else:
                 for corr in PMU_STATISTICS[pmu2]['p']:
                     if corr['pair'] == pmu1:
                         correlationLine.append(corr['val'])
-                        flag=True
-                if(not flag):
-                    console.print("NOT FOUND: %s, %s" %(pmu1, pmu2))
         correlationMap.append(correlationLine)
+    console.print("++++++++++++++++++++++++++++++++++")
+    console.print("correlation matrix:")
     console.print(correlationMap)
-    correlationMatrix = numpy.matrix(correlationMap, dtype=float)
+    correlationMatrix = numpy.matrix(correlationMap, dtype=numpy.float64)
     console.print(correlationMatrix)
     plt.matshow(correlationMatrix)
 
     #Covariance matrix Ʃˆ
+    mean_array = []
+    for pmu in MUCH_BENCH_PMUS:
+        mean_array.append(PMU_STATISTICS[pmu]['u'])
     covarianceMap = []
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
         console.print("pmu1: %s" % pmu1)
@@ -364,30 +371,35 @@ def drawingData():
         for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
             console.print("pmu2: %s" % pmu2)
             if pmu1==pmu2:
-                covarianceLine.append(math.pow(PMU_STATISTICS[pmu2]['o'], 2))
+                covarianceLine.append(PMU_STATISTICS[pmu2]['o2'])
             else:
                 for corr in PMU_STATISTICS[pmu2]['o_pair']:
                     if corr['pair'] == pmu1:
                         covarianceLine.append(corr['val'])
                         continue
         covarianceMap.append(covarianceLine)
-    covarianceMatrix = numpy.matrix(covarianceMap, dtype=object)
+        # console.print("PMU %s : %s" % (pmu1, str(covarianceLine)))
+        # PMU_STATISTICS[pmu1]['mvgd'] = multivariate_normal(mean=mean_array, cov=covarianceLine)
+    console.print("++++++++++++++++++++++++++++++++++")
+    console.print("covariance matrix:")
+    covarianceMatrix = numpy.matrix(covarianceMap, dtype = numpy.float64)
     console.print(covarianceMatrix)
-    
 
     #multivariate normal MVGD  𝑋 ∼ N𝑛ℎ(𝜇,ˆ Σˆ)
-    console.print(PMU_STATISTICS)
-    mean_array = []
-    for pmu in MUCH_BENCH_PMUS:
-        mean_array.append(PMU_STATISTICS[pmu]['u'])
-    # mvgd = multivariate_normal.pdf(mean=mean_array, cov=covarianceMatrix)
-    mvgd = multivariate_normal(mean=mean_array, cov=covarianceMatrix)
-    console.print(mvgd)
+    # mean_array = []
+    # for pmu in MUCH_BENCH_PMUS:
+    #     mean_array.append(PMU_STATISTICS[pmu]['u'])
+    # console.print("mean array: %s" % mean_array)
+    # # mvgd = multivariate_normal.pdf(mean=mean_array, cov=covarianceMatrix)
+    # mvgd = multivariate_normal(mean=mean_array, cov=covarianceMatrix, allow_singular=True)
+    # console.print(mvgd)
+
 
     #Application of copula theory
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
         num = len(PMU_GROUPED_HI[pmu1])
-        steps = numpy.linspace(0,1,num+1,endpoint=False).tolist() 
+        steps,dist = numpy.linspace(0,1,num+1,endpoint=False, dtype=numpy.float64, retstep=True)
+        steps = steps.tolist()
         steps.remove(0)
         meanSteps = numpy.mean(steps)
         console.print("num is %d" % num)
@@ -404,20 +416,14 @@ def drawingData():
                 "val" : mvgdSampled,
                 "u": numpy.mean(mvgdSampled),
                 "o": numpy.std(mvgdSampled), #standard deviation
-                "o2": numpy.var(mvgdSampled) #variance
+                "o2": numpy.var(mvgdSampled), #variance
+                "p": [],
+                "o_pair": []
         }
 
-    for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):
-        # Traceback (most recent call last):
-        # File "/home/pi/pmu_eval_suite/record_suite.c_profile.py", line 545, in <module>
-        #     drawingData()
-        # File "/home/pi/pmu_eval_suite/record_suite.c_profile.py", line 376, in drawingData
-        #     p, _ = pearsonr(PMU_STATISTICS[pmu_couple[0]]['ppf']['val'], PMU_STATISTICS[pmu_couple[1]]['ppf']['val'])
-        # File "/home/pi/.pyenv/versions/3.9.2/lib/python3.9/site-packages/scipy/stats/_stats_py.py", line 4412, in pearsonr
-        #     raise ValueError('x and y must have the same length.')
-        # ValueError: x and y must have the same length.
-        
+    for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):      
         p, _ = pearsonr(PMU_STATISTICS[pmu_couple[0]]['ppf']['val'], PMU_STATISTICS[pmu_couple[1]]['ppf']['val'])
+        console.print("ppf -> " + str(PMU_STATISTICS[pmu_couple[0]]['ppf']))
         PMU_STATISTICS[pmu_couple[0]]['ppf']["p"].append({
             "pair" : pmu_couple[1],
             "val": p
@@ -439,15 +445,86 @@ def drawingData():
 
 
                
+    correlationMap = []
+    for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
+        console.print("pmu1: %s" % pmu1)
+        correlationLine = []
+        for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
+            console.print("pmu2: %s" % pmu2)
+            if pmu1==pmu2:
+                console.print("same")
+                correlationLine.append(float(1)) #correlation between same values is 1
+            else:
+                for corr in PMU_STATISTICS[pmu2]['ppf']['p']:
+                    if corr['pair'] == pmu1:
+                        correlationLine.append(corr['val'])
+        correlationMap.append(correlationLine)
+    console.print("++++++++++++++++++++++++++++++++++")
+    console.print("correlation matrix:")
+    console.print(correlationMap)
+    gaussianCorrelationMatrix = numpy.matrix(correlationMap, dtype=numpy.float64)
+    console.print(gaussianCorrelationMatrix)
+
+    #Covariance matrix Ʃˆ0
+    covarianceMap = []
+    for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
+        console.print("pmu1: %s" % pmu1)
+        covarianceLine = []
+        for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
+            console.print("pmu2: %s" % pmu2)
+            if pmu1==pmu2:
+                covarianceLine.append(PMU_STATISTICS[pmu2]['ppf']['o2'])
+            else:
+                for corr in PMU_STATISTICS[pmu2]['ppf']['o_pair']:
+                    if corr['pair'] == pmu1:
+                        covarianceLine.append(corr['val'])
+                        continue
+        covarianceMap.append(covarianceLine)
+        # console.print("PMU %s : %s" % (pmu1, str(covarianceLine)))
+        # PMU_STATISTICS[pmu1]['mvgd'] = multivariate_normal(mean=mean_array, cov=covarianceLine)
+    console.print("++++++++++++++++++++++++++++++++++")
+    console.print("covariance matrix:")
+    gaussianCovarianceMatrix = numpy.matrix(covarianceMap, dtype = numpy.float64)
+    console.print(covarianceMatrix)
+
+    #multivariate normal MVGD 𝑋 ∼ N𝑛ℎ(0, Σˆ0)
+    # mvgd = multivariate_normal.pdf(mean=mean_array, cov=covarianceMatrix)
+    #mvgd = multivariate_normal(mean=numpy.zeros(len(MUCH_BENCH_PMUS)), cov=gaussianCovarianceMatrix, allow_singular=True)
+    sampMVGD = numpy.random.multivariate_normal(numpy.zeros(len(MUCH_BENCH_PMUS)),gaussianCovarianceMatrix,len(PMU_GROUPED_HI[pmu1]))
+    for idx in range(len(MUCH_BENCH_PMUS)):
+        samp_array = [elm[idx] for elm in sampMVGD]
+        index_samples = numpy.argsort(samp_array)
+        console.print("++++++++++++++++++++++++++++++++++")
+        console.print("{}".format(samp_array))
+        console.print("++++++++++++++++++++++++++++++++++")
+        console.print("{}".format(index_samples))
+
+    HEMvector = []
+    for position in index_samples:
+        HEMvector.append([PMU_GROUPED_HI[elm][position] for elm in MUCH_BENCH_PMUS])
+    console.print(HEMvector)
+    exit()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
-    # p, _ = pearsonr(pmu1, pmu2)
-    # console.print('%s + %s correlation: %f' % (pmu_couple[0], pmu_couple[1],p))
-
-    # PMU_STATISTICS[pmu_couple[0]]["o_pair"].append({
-    #     "pair" : pmu_couple[1],
-    #     "val": p * PMU_STATISTICS[pmu_couple[0]]["o"] * PMU_STATISTICS[pmu_couple[1]]["o"]
-    # })
-
     #scatter plot for correlation
     corr = plt.figure(num=3, figsize=[10, 10])
     scatter_x = []
@@ -536,13 +613,6 @@ def loadObjects():
     EXPERIMENTS_LIST = data['EXPERIMENTS_LIST']
     MUCH_BENCH_PMUS = data['PMU_SUPPORTED']
     EXPERIMENTS_RESULTS_TABLE = data['EXPERIMENTS_RESULTS_TABLE']
-
-    # file_pi1 = open(BENCHMARK_STATISTICS_FILE, 'rb') 
-    # PMU_STATISTICS = pickle.load(file_pi1)
-    # file_pi2 = open(BENCHMARK_PMU_FILE, 'rb') 
-    # MUCH_BENCH_PMUS = pickle.load(file_pi2)   
-    # file_pi3 = open(PMU_GROUPED_HI_FILE, 'rb') 
-    # PMU_GROUPED_HI = pickle.load(file_pi3)
     console = Console()
     console.print(EXPERIMENTS_LIST)
     console.print(MUCH_BENCH_PMUS)
