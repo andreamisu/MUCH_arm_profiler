@@ -14,7 +14,7 @@ PMU_RESULTS = defaultdict(list)
 MUCH_EXECUTED_ITERATION = defaultdict(list)
 EFFICIENT_PMUS_ALLOCATION = 6
 EXPERIMENTS_LIST = []
-EXPERIMENTS_ITERATION = 2
+EXPERIMENTS_ITERATION = 400 
 
 def checkComplementaryPMUIterations(chosenMuchPmus, secondaryPMU):
     global MUCH_EXECUTED_ITERATION
