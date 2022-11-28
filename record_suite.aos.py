@@ -702,7 +702,6 @@ def drawingData():
                         })
                         tableP.add_row(pmu1, pmu2, str(empiricalP), str(mvgdP), str(deltaP))
         console.print(tableP)
-        exit()
 
         # optimization step
         correlationMap = []
@@ -775,15 +774,16 @@ def drawingData():
     console.print('np.array(flatCorrelation): {}'.format(a))
     console.print('np.percentile(a, 20): {}'.format(numpy.percentile(a, 20)))
     console.print('np.percentile(a, 50): {}'.format(numpy.percentile(a, 50)))
+    console.print('np.percentile(a, 70): {}'.format(numpy.percentile(a, 70)))
     console.print('np.percentile(a, 90): {}'.format(numpy.percentile(a, 90)))
     console.print('np.percentile(a, 99): {}'.format(numpy.percentile(a, 99)))
 
     d = numpy.sort(a).cumsum()
 
     # Percentile values
-    p = numpy.array([0.0, 25.0, 50.0, 75.0, 100.0])
+    p = numpy.array([0.0, 25.0, 50.0, 75.0, 90.0, 99.0, 100.0])
 
-    perc = mlab.prctile(d, p=p)
+    perc = mlab.percentile(d, p=p)
 
     plt.plot(d)
     # Place red dots on the percentiles
