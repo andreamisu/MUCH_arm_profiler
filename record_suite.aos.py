@@ -771,6 +771,22 @@ def drawingData():
 
 
     a = numpy.array(flatCorrelation)
+
+    ## TODO: REGRESSIONI E CORRELAZIONI
+    # PREDICTION USING CORRELAZIONI
+    # RIMOZIONI COLONNE ALTA CORRELAZIONE, CHE POSSIAMO DERIVARE
+
+
+
+    ## TODO: PLOTTING
+    ## FIG. 1 percentile delta correlazione
+
+    # FIG.2 AVG. MSE IN BASE A QUANTE ITERAZIONI DELLO STEP DI OTTIMIZZAZIONI ABBIAMO
+
+    # FIG.3 CORRELAZIONE EMPIRICA QUADRATONI
+
+    # FIG4 CORRELAZIONE MVGD QUADRATONI
+
     console.print('np.array(flatCorrelation): {}'.format(a))
     console.print('np.percentile(a, 20): {}'.format(numpy.percentile(a, 20)))
     console.print('np.percentile(a, 50): {}'.format(numpy.percentile(a, 50)))
