@@ -148,19 +148,16 @@ def main():
     console.print("numbers of fetchable PMU events: %d" % (len(perfList)))
     console.print(",      ".join(perfList), style="green")
     console.print("numbers of PMU events each run: " + str(PMU_STEPS))
-    # console.print("Raw PMU: " + str(RAW_PMU))
     
     for x in range(PMU_STEPS, len(perfList), PMU_STEPS):
         pmuSelected = ''
         for idx, val in enumerate(perfList[x-PMU_STEPS:x]):
             pmuSelected += RAW_PMU[val] if idx == 0 else "/"+RAW_PMU[val]
-        # console.print(pmuSelected)
         cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
-        with console.status("doing benchmarks on " + pmuSelected.replace(",",", ") + "..."):
-            # console.print(cmdBench)
+        with console.status("doing benchmarks on {} ...".format(pmuSelected.replace(",",", "))):
             results = subprocess.run(cmdBench, text=True, capture_output=True)
             if(results.returncode == 0):
-                console.print(results.stdout)
+                logging.debug(results.stdout)
                 for idx, val in enumerate(perfList[x-PMU_STEPS:x]):
                     events = int(results.stdout.split('/')[idx])
                     table.add_row(val, str(events), str(RUN_COUNTER))
@@ -191,7 +188,6 @@ def main():
             MUCH_EXECUTED_ITERATION[pivotPMU] = []
         while len(set(MUCH_EXECUTED_ITERATION[pivotPMU])) < len(MUCH_BENCH_PMUS):
             chosenMuchPmus = [pivotPMU]
-            #TODO: Shall we take into account also multiple iteration on tuple of PMUs repeteing?
             for secondaryPMU in list(filter(lambda elm: elm not in MUCH_EXECUTED_ITERATION[pivotPMU], MUCH_BENCH_PMUS)):
                 if secondaryPMU == pivotPMU:
                     continue
@@ -224,7 +220,7 @@ def main():
         # console.print(pmuSelected)
         cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
         for i in range(0, MUCH_RUNS):
-            with console.status("Benchmark for experiment # %d \n %s \n %d / %d runs" % (index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
+            with console.status("Benchmark for experiment # {} \n {} \n {} / {} runs".format(index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
                 results = subprocess.run(cmdBench, text=True, capture_output=True)
                 if(results.returncode == 0):
                     collectMUCHValues(results.stdout, index, EXPERIMENTS_LIST[index])
@@ -269,7 +265,6 @@ def drawingData():
         meanSteps = numpy.mean(steps)
         mvgdSampled = list(map(lambda elm: norm.ppf(elm, loc=0, scale=1), steps)) 
 
-        #pmu1 
         pmu1_indexes_sort = numpy.argsort(PMU_GROUPED_HI[h])
         pmu1_argsort = numpy.zeros(len(PMU_GROUPED_HI[h]))
         for idx in range(0,len(pmu1_argsort)):
@@ -305,16 +300,15 @@ def drawingData():
         console.print("PMU variance (o2) value: %s" % str(PMU_STATISTICS[h]["o2"]))
 
     # empirical correlation between 2 hems  ρˆij 
-
     counter = 0
     for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):
         for index in range(0,len(EXPERIMENTS_LIST)):
             #experiment in which both are present
             if pmu_couple[0] in EXPERIMENTS_LIST[index] and pmu_couple[1] in EXPERIMENTS_LIST[index]:
 
-                console.print("++++++++++++++++++++++++")
-                console.print("correlation exp: %s + %s" % (pmu_couple[0], pmu_couple[1]))
-                console.print("exp: %s" % str(EXPERIMENTS_LIST[index]))
+                logging.debug("++++++++++++++++++++++++")
+                logging.debug("correlation exp: %s + %s" % (pmu_couple[0], pmu_couple[1]))
+                logging.debug("exp: %s" % str(EXPERIMENTS_LIST[index]))
                 pmu1 = []
                 pmu2 = []
                 p = 0
@@ -335,28 +329,9 @@ def drawingData():
                     pmu2.append(y)
                 # pearson correlation
                 p, pvalue = pearsonr(pmu1, pmu2)
-                console.print('%s + %s correlation: %f' % (pmu_couple[0], pmu_couple[1],p))
+                logging.debug('{} + {} correlation: {}'.format(pmu_couple[0], pmu_couple[1],p))
                 console.print('pmu1: {}'.format(pmu1))
                 console.print('pmu2: {}'.format(pmu2))
-
-                # num = len(pmu1)
-                # steps,dist = numpy.linspace(0,1,num+1,endpoint=False, dtype=numpy.float64, retstep=True)
-                # steps = steps.tolist()
-                # steps.remove(0)
-                # meanSteps = numpy.mean(steps)
-                # mvgdSampled = list(map(lambda elm: norm.ppf(elm, loc=0, scale=1), steps)) 
-
-                # #pmu1 
-                # pmu1_indexes_sort = numpy.argsort(pmu1)
-                # pmu1_argsort = numpy.zeros(len(pmu1))
-                # for idx in range(0,len(pmu1_argsort)):
-                #     pmu1_argsort[pmu1_indexes_sort[idx]] = mvgdSampled[idx]
-
-                # #pmu2
-                # pmu2_indexes_sort = numpy.argsort(pmu2)
-                # pmu2_argsort = numpy.zeros(len(pmu2))
-                # for idx in range(0,len(pmu2_argsort)):
-                #     pmu2_argsort[pmu2_indexes_sort[idx]] = mvgdSampled[idx]
 
                 pmu1_argsort = []
                 pmu2_argsort = []
@@ -366,12 +341,12 @@ def drawingData():
                 for elm in pmu2:
                     pmu2_argsort.append(PMU_MAPPED[pmu_couple[1]][elm])
 
-                console.print('pmu_couple0: {}'.format(pmu_couple[0]))
-                console.print('pmu_couple1: {}'.format(pmu_couple[1]))
-                console.print('pmu1: {}'.format(pmu1))
-                console.print('pmu2: {}'.format(pmu2))
-                console.print('pmu1_argsort: {}'.format(pmu1_argsort))
-                console.print('pmu2_argsort: {}'.format(pmu2_argsort))
+                logging.debug('pmu_couple0: {}'.format(pmu_couple[0]))
+                logging.debug('pmu_couple1: {}'.format(pmu_couple[1]))
+                logging.debug('pmu1: {}'.format(pmu1))
+                logging.debug('pmu2: {}'.format(pmu2))
+                logging.debug('pmu1_argsort: {}'.format(pmu1_argsort))
+                logging.debug('pmu2_argsort: {}'.format(pmu2_argsort))
                 
 
                 p_mapped, pvalue_mapped = pearsonr(pmu1_argsort, pmu2_argsort)
@@ -391,8 +366,8 @@ def drawingData():
                     "o2": numpy.var(pmu2_argsort, dtype = numpy.float64), #variance of hi subexperiment in PMU_GROUPED_HI[h] on u mean   
                 }
 
-                console.print('pmu1_mapped_obj: {}'.format(pmu1_mapped_obj))
-                console.print('pmu2_mapped_obj: {}'.format(pmu2_mapped_obj))                
+                logging.debug('pmu1_mapped_obj: {}'.format(pmu1_mapped_obj))
+                logging.debug('pmu2_mapped_obj: {}'.format(pmu2_mapped_obj))                
 
                 PMU_STATISTICS[pmu_couple[0]]["o_mapped"] = pmu1_mapped_obj["o"]
                 PMU_STATISTICS[pmu_couple[0]]["o2_mapped"] = pmu1_mapped_obj["o2"]
@@ -430,9 +405,9 @@ def drawingData():
                     'val_mapped': p_mapped
                 })
 
-                console.print("pmu %s o: %f" %(pmu_couple[0], PMU_STATISTICS[pmu_couple[0]]["o"]))
-                console.print("pmu %s o: %f" %(pmu_couple[1], PMU_STATISTICS[pmu_couple[1]]["o"]))
-                console.print("%s + %s:\no_pair > %s \np: %s" % (pmu_couple[0], pmu_couple[1], str(p * PMU_STATISTICS[pmu_couple[0]]["o"] * PMU_STATISTICS[pmu_couple[1]]["o"]), str(p)))
+                logging.debug("pmu %s o: %f" %(pmu_couple[0], PMU_STATISTICS[pmu_couple[0]]["o"]))
+                logging.debug("pmu %s o: %f" %(pmu_couple[1], PMU_STATISTICS[pmu_couple[1]]["o"]))
+                logging.debug("%s + %s:\no_pair > %s \np: %s" % (pmu_couple[0], pmu_couple[1], str(p * PMU_STATISTICS[pmu_couple[0]]["o"] * PMU_STATISTICS[pmu_couple[1]]["o"]), str(p)))
 
     #http://users.stat.umn.edu/~helwig/notes/datamat-Notes.pdf
     #Correlation matrix S
@@ -598,21 +573,6 @@ def drawingData():
             correlationoject[x] = []
 
         sampMVGD = numpy.random.multivariate_normal(numpy.zeros(len(MUCH_BENCH_PMUS)),gaussianCovarianceMatrix,len(PMU_GROUPED_HI[pmu1]))
-        # for idx,elm in enumerate(sampMVGD):
-        #     console.print("{}: {}".format(idx, elm))
-        
-        col1 = sampMVGD[:,0]
-        col2 = sampMVGD[:,3]
-        p, _ = pearsonr(col1, col2)
-        for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-            if index1 == 0:   
-                console.print('pmu1: {}'.format(pmu1))
-            if index1 == 3:   
-                console.print('pmu2: {}'.format(pmu1))
-        console.print('col1: {}'.format(col1))
-        console.print('col2: {}'.format(col2))
-        console.print('p: {}'.format(p))
-        # sampMVGD = numpy.random.multivariate_normal(numpy.zeros(len(MUCH_BENCH_PMUS)),gaussianCovarianceMatrix)
         HEMvector = []
         for idx,pmu in enumerate(MUCH_BENCH_PMUS):
             samp_array = sampMVGD[:,idx]
@@ -960,9 +920,9 @@ def loadObjects():
     MUCH_BENCH_PMUS = data['PMU_SUPPORTED']
     EXPERIMENTS_RESULTS_TABLE = data['EXPERIMENTS_RESULTS_TABLE']
     console = Console()
-    console.print(EXPERIMENTS_LIST)
-    console.print(MUCH_BENCH_PMUS)
-    console.print(EXPERIMENTS_RESULTS_TABLE)
+    logging.debug(EXPERIMENTS_LIST)
+    logging.debug(MUCH_BENCH_PMUS)
+    logging.debug(EXPERIMENTS_RESULTS_TABLE)
 
 
 def checkComplementaryPMUIterations(chosenMuchPmus, secondaryPMU):
