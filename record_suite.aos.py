@@ -18,6 +18,7 @@ from mpl_toolkits import mplot3d
 import pickle 
 from sklearn import linear_model
 import pandas
+import seaborn as sns
 import time
 
 BENCHMARK_STATISTICS_FILE = './benchmark_statistics.dump'
@@ -591,7 +592,7 @@ def drawingData():
          
     #multivariate normal MVGD 𝑋 ∼ N𝑛ℎ(0, Σˆ0)
     new_correlation = []
-    for iteration in range(0,10):
+    for iteration in range(0,1):
         correlationoject = {}
         for x in MUCH_BENCH_PMUS:
             correlationoject[x] = []
@@ -747,7 +748,8 @@ def drawingData():
             'mse': mse,
             'HEMVectorMatrix': HEMVectorMatrix,
             'tableP' : tableP,
-            'correlationDeltaMatrix': correlationDeltaMatrix
+            'correlationDeltaMatrix': correlationDeltaMatrix,
+            'mvgdCorrelationMatrix': mvgdCorrelationMatrix
         })
 
     #select the matrix with Minimum Mean Squared Error
@@ -794,21 +796,47 @@ def drawingData():
     console.print('np.percentile(a, 90): {}'.format(numpy.percentile(a, 90)))
     console.print('np.percentile(a, 99): {}'.format(numpy.percentile(a, 99)))
 
-    d = numpy.sort(a).cumsum()
+    
 
-    # Percentile values
-    p = numpy.array([0.0, 25.0, 50.0, 75.0, 90.0, 99.0, 100.0])
+    # FIG.3 CORRELAZIONE EMPIRICA QUADRATONI
+    df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = [elm for elm in MUCH_BENCH_PMUS], index = [elm for elm in MUCH_BENCH_PMUS])
+    console.print('df: {}'.format(df))
 
-    perc = mlab.percentile(d, p=p)
+    plt.figure(figsize=(16,12))
 
-    plt.plot(d)
-    # Place red dots on the percentiles
-    plt.plot((len(d)-1) * p/100., perc, 'ro')
+    mask = numpy.triu(numpy.ones_like(df, dtype=bool))
 
-    # Set tick locations and labels
-    plt.xticks((len(d)-1) * p/100., map(str, p))
+    # Create a custom diverging palette
+    cmap = sns.diverging_palette(250, 15, s=75, l=40,
+                                n=9, center="light", as_cmap=True)
+
+    _ = sns.heatmap(df, mask=mask, center=0, annot=True,
+             fmt='.2f', square=True, cmap=cmap)
 
     plt.show()
+
+
+    dataframeCorrelationMatrix = pandas.DataFrame(correlationMatrix, columns = [elm for elm in MUCH_BENCH_PMUS], index = [elm for elm in MUCH_BENCH_PMUS])
+    console.print('dataframeCorrelationMatrix: {}'.format(dataframeCorrelationMatrix))
+
+    plt.figure(figsize=(16,12))
+
+    mask = numpy.triu(numpy.ones_like(dataframeCorrelationMatrix, dtype=bool))
+
+    # # Create a custom diverging palette
+    # cmap = sns.diverging_palette(250, 15, s=75, l=40,
+    #                             n=9, center="light", as_cmap=True)
+    # Create a custom diverging palette
+    cmap = sns.diverging_palette(120, 15, s=75, l=40,
+                                n=9, center="light", as_cmap=True)
+    _ = sns.heatmap(dataframeCorrelationMatrix, mask=mask, center=0, annot=True,
+             fmt='.2f', square=True, cmap=cmap)
+
+    plt.show()
+
+    # FIG4 CORRELAZIONE MVGD QUADRATONI
+
+
 
     exit()
 
