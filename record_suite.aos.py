@@ -20,6 +20,10 @@ from sklearn import linear_model
 import pandas
 import seaborn as sns
 import time
+from sklearn.metrics import mean_absolute_percentage_error
+from sklearn.linear_model import LinearRegression
+from sklearn.neural_network import MLPRegressor
+from sklearn.ensemble import RandomForestRegressor
 
 BENCHMARK_STATISTICS_FILE = './benchmark_statistics.dump'
 BENCHMARK_PMU_FILE = './benchmark_pmus.dump'
@@ -35,7 +39,8 @@ EVENTS_THRESHOLD = 20000
 MUCH_BENCH_PMUS = []
 EXPERIMENTS_LIST = []
 ALLOCABLE_PMUS = 6
-MUCH_RUNS = 1000 # 30 is the minimum suggestabele from the paper in order to use Central Limit Theory. Higher the number, More precise the measurement of correlations.
+MUCH_RUNS = 50 # 30 is the minimum suggestabele from the paper in order to use Central Limit Theory. Higher the number, More precise the measurement of correlations.
+OPTIMIZZATION_STEPS = 10
 
 PMU_GROUPED_HI = {}
 PMU_STATISTICS = {} #key: pmu name
@@ -243,6 +248,7 @@ def main():
 
 def drawingData():
     global PMU_STATISTICS, MUCH_BENCH_PMUS, console, EXPERIMENTS_RESULTS_TABLE
+
     for h in MUCH_BENCH_PMUS:
         PMU_GROUPED_HI[h] = []
         for index in range(0,len(EXPERIMENTS_LIST)):
@@ -256,7 +262,7 @@ def drawingData():
                     if subexp["pmu"] == h:
                         PMU_GROUPED_HI[h].append(int(subexp["events"].replace(",","")))
                         logging.debug("events: %s" % (subexp["events"]))
-
+        console.print('{}={}'.format(h,PMU_GROUPED_HI[h]))
         PMU_MAPPED[h] = {}
         num = len(PMU_GROUPED_HI[h])
         steps,dist = numpy.linspace(0,1,num+1,endpoint=False, dtype=numpy.float64, retstep=True)
@@ -270,14 +276,14 @@ def drawingData():
         for idx in range(0,len(pmu1_argsort)):
             pmu1_argsort[pmu1_indexes_sort[idx]] = mvgdSampled[idx]
         
-        console.print('PMU_GROUPED_HI[h]: {}'.format(PMU_GROUPED_HI[h]))
-        console.print('pmu1_indexes_sort: {}'.format(pmu1_indexes_sort))
-        console.print('mvgdSampled: {}'.format(mvgdSampled))
-        console.print('pmu1_argsort: {}'.format(pmu1_indexes_sort))
+        # console.print('PMU_GROUPED_HI[h]: {}'.format(PMU_GROUPED_HI[h]))
+        # console.print('pmu1_indexes_sort: {}'.format(pmu1_indexes_sort))
+        # console.print('mvgdSampled: {}'.format(mvgdSampled))
+        # console.print('pmu1_argsort: {}'.format(pmu1_indexes_sort))
 
         for idx,elm in enumerate(PMU_GROUPED_HI[h]):
             PMU_MAPPED[h][elm] = pmu1_argsort[idx]
-        console.print('PMU_MAPPED[h]: {}'.format(PMU_MAPPED[h]))
+        # console.print('PMU_MAPPED[h]: {}'.format(PMU_MAPPED[h]))
 
 
         PMU_STATISTICS[h] = {
@@ -292,12 +298,12 @@ def drawingData():
             "mvgdP": []     
         }
 
-        console.print("++++++++++++++++++++++++")
-        console.print("PMU : %s" % (h))
-        console.print("PMU_GROUPED_HI : %s" % (PMU_GROUPED_HI[h]))
-        console.print("PMU expectedValue (u) value: %s" % str(PMU_STATISTICS[h]["u"]))
-        console.print("PMU standard deviation (o) value: %s" % str(PMU_STATISTICS[h]["o"]))
-        console.print("PMU variance (o2) value: %s" % str(PMU_STATISTICS[h]["o2"]))
+        # console.print("++++++++++++++++++++++++")
+        # console.print("PMU : %s" % (h))
+        # console.print("PMU_GROUPED_HI : %s" % (PMU_GROUPED_HI[h]))
+        # console.print("PMU expectedValue (u) value: %s" % str(PMU_STATISTICS[h]["u"]))
+        # console.print("PMU standard deviation (o) value: %s" % str(PMU_STATISTICS[h]["o"]))
+        # console.print("PMU variance (o2) value: %s" % str(PMU_STATISTICS[h]["o2"]))
 
     # empirical correlation between 2 hems  ρˆij 
     counter = 0
@@ -567,49 +573,25 @@ def drawingData():
          
     #multivariate normal MVGD 𝑋 ∼ N𝑛ℎ(0, Σˆ0)
     new_correlation = []
-    for iteration in range(0,1):
+    for iteration in range(0,OPTIMIZZATION_STEPS):
         correlationoject = {}
         for x in MUCH_BENCH_PMUS:
             correlationoject[x] = []
 
+        
+        vector_means = numpy.zeros(len(MUCH_BENCH_PMUS))
         sampMVGD = numpy.random.multivariate_normal(numpy.zeros(len(MUCH_BENCH_PMUS)),gaussianCovarianceMatrix,len(PMU_GROUPED_HI[pmu1]))
         HEMvector = []
         for idx,pmu in enumerate(MUCH_BENCH_PMUS):
             samp_array = sampMVGD[:,idx]
-            #console.print("++++++++++++++++++++++++++++++++++")
-            index_samples = numpy.argsort(samp_array)
-            #index_samples = numpy.argsort(samp_array)[::-1]
-            # console.print("++++++++++++++++++++++++++++++++++")
-            # console.print("samp_array: {}".format(samp_array))
-            # console.print("++++++++++++++++++++++++++++++++++")
-            # console.print("index_samples: {}".format(index_samples))
-            
-
-            descOrdHEM = numpy.sort(PMU_GROUPED_HI[pmu])
-            #console.print("descOrdHEM: {}".format(descOrdHEM))
-            
+            index_samples = numpy.argsort(samp_array)       
+            descOrdHEM = numpy.sort(PMU_GROUPED_HI[pmu])  
             regrouped = numpy.zeros(len(index_samples))
             for idx, elm in enumerate(index_samples):
                 regrouped[elm] = descOrdHEM[idx]
-            #console.print("regrouped: {}".format(regrouped))
             HEMvector.append(regrouped)
         HEMVectorMatrix = numpy.array(HEMvector, dtype=numpy.float64)
 
-        col1 = HEMVectorMatrix[0,:]
-        col2 = HEMVectorMatrix[3,:]
-        console.print('col1: {}'.format(col1))
-        console.print('col2: {}'.format(col2))
-        p, _ = pearsonr(col1, col2)
-        for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-            if index1 == 0:   
-                console.print('pmu1: {}'.format(pmu1))
-            if index1 == 3:   
-                console.print('pmu2: {}'.format(pmu1))
-        console.print('col1: {}'.format(col1))
-        console.print('col2: {}'.format(col2))
-        console.print('p: {}'.format(p))
-        #console.print("HEMVectorMatrix: {}".format(HEMVectorMatrix))
-        # check, for each hem couple, how much differs from original correlation
         tableP = Table(title="Correlation Evaluation")
         tableP.add_column("PMU 1", style="cyan", no_wrap=True)
         tableP.add_column("PMU 2",style="cyan", no_wrap=True)
@@ -626,12 +608,6 @@ def drawingData():
                     continue #same PMU
                 pmu1Values = HEMVectorMatrix[index1,:]
                 pmu2Values = HEMVectorMatrix[index2,:]
-                # console.print("pmu1: {}".format(pmu1))
-                # console.print("pmu2: {}".format(pmu2))            
-                # console.print("PMU_GROUPED_HI[pmu1]: {}".format(PMU_GROUPED_HI[pmu1]))
-                # console.print("PMU_GROUPED_HI[pmu2]: {}".format(PMU_GROUPED_HI[pmu2]))
-                # console.print("pmu1Values: {}".format(pmu1Values))
-                # console.print("pmu2Values: {}".format(pmu2Values))
                 mvgdP, _ = pearsonr(pmu1Values, pmu2Values)
                 console.print(mvgdP)
                 for pair in PMU_STATISTICS[pmu1]["p"]:
@@ -787,7 +763,7 @@ def drawingData():
     # cmap = sns.diverging_palette(250, 15, s=75, l=40,
     #                             n=9, center="light", as_cmap=True)
     # Create a custom diverging palette
-    cmap = sns.diverging_palette(120, 15, s=75, l=40,
+    cmap = sns.diverging_palette(250, 15, s=75, l=40,
                                 n=9, center="light", as_cmap=True)
     _ = sns.heatmap(dataframeCorrelationMatrix, mask=mask, center=0, annot=True,
              fmt='.2f', square=True, cmap=cmap)
@@ -795,11 +771,6 @@ def drawingData():
     plt.show()
 
     # FIG4 CORRELAZIONE MVGD QUADRATONI
-
-
-
-    exit()
-
 
     #     bestCorrelation.append({
     #         'idx': i,
@@ -809,6 +780,263 @@ def drawingData():
     #     })
     # for elm in bestCorrelation:
     #     console.print(elm)
+
+
+    ## VALUE PREDICTION FOR ESTIMATED 
+    df = pandas.DataFrame(HEMVectorMatrix[:,index] for index in range(0,len(MUCH_BENCH_PMUS)))
+    console.print(df)
+    df.columns = [h for h in MUCH_BENCH_PMUS]
+    console.print(df)
+
+    y = df['l2d_cache_refill']
+    X = df.drop(columns='l2d_cache_refill')
+
+
+    # Linear Regression
+    MLR = LinearRegression(
+    copy_X = True,
+    fit_intercept = True,
+    n_jobs = 'auto',
+    normalize = 'deprecated',
+    positive = False
+    )
+
+    MLR.fit(X, y)
+
+    y_pred = MLR.predict(X)
+    MAE_MLR = mean_absolute_percentage_error(y, y_pred)
+
+    #MLP Regression
+    MLP = MLPRegressor(
+    activation = 'relu',
+    alpha = 0.0001,
+    batch_size = 'auto',
+    beta_1 = 0.9,
+    beta_2 = 0.999,
+    early_stopping = False,
+    epsilon = 1e-08,
+    hidden_layer_sizes = (100,),
+    learning_rate = 'constant',
+    learning_rate_init = 0.001,
+    max_fun = 15000,
+    max_iter = 200,
+    momentum = 0.9,
+    n_iter_no_change = 10,
+    nesterovs_momentum = True,
+    power_t = 0.5,
+    random_state = None,
+    shuffle = True,
+    solver = 'adam',
+    tol = 0.0001,
+    validation_fraction = 0.1,
+    verbose = False,
+    warm_start = False
+    )
+
+    MLP.fit(
+        X, 
+        y
+    )
+
+    MLP.fit(X, y)
+
+    y_pred = MLP.predict(X)
+
+    MAE_MLP = mean_absolute_percentage_error(y, y_pred)
+
+    #Random Forest Regression
+    RF = RandomForestRegressor(
+    bootstrap = True,
+    ccp_alpha = 0.0,
+    criterion = 'squared_error',
+    max_depth = None,
+    max_features = 'auto',
+    max_leaf_nodes = None,
+    max_samples = None,
+    min_impurity_decrease = 0.0,
+    min_samples_leaf = 1,
+    min_samples_split = 2,
+    min_weight_fraction_leaf = 0.0,
+    n_estimators = 100,
+    n_jobs = -1,
+    oob_score = False,
+    random_state = None,
+    verbose = 0,
+    warm_start = False
+    )
+
+    RF.fit(
+        X, 
+        y
+    )
+
+    RF.fit(X, y)
+
+    y_pred = RF.predict(X)
+
+    MAE_RF = mean_absolute_percentage_error(y, y_pred)
+
+    models = ['MLR', 'MLP', 'RF']
+    MAEs = [MAE_MLR, MAE_MLP, MAE_RF]
+    df1 = pandas.DataFrame([models, MAEs]).T
+    df1.columns = ['Model', 'MAE']
+    console.print('df1: {}'.format(df1))
+
+
+    ## TROVARE I 6 PMU CHE APPROSSIMANO MEGLIO IL RESTO DELLA DISTRUBUZIONE
+    
+    bestfit_df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = MUCH_BENCH_PMUS, index = MUCH_BENCH_PMUS)
+    console.print("bestfit_df: {}".format(bestfit_df))
+    bestHEMS = {
+        'hems' : [],
+        'correlationSum': 0
+    }
+
+    for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 6):
+        window_columns = [elm for elm in MUCH_BENCH_PMUS if elm not in hem_list]
+        window_matrix = bestfit_df.loc[hem_list,window_columns]
+        # console.print("window_matrix: {}".format(window_matrix))
+        # console.print("hem_list: {}".format(hem_list))
+
+        localCorrelationSum = 0
+        for col in window_columns:
+            col_filter = window_matrix.loc[:,col]
+            # console.print("col_filter: {}".format(col_filter))
+            # console.print("col: {}".format(col))
+            # console.print("window_matrix: {}".format(window_matrix))
+            localCorrelationSum += col_filter.abs().max()
+            # console.print("max_val: {}".format(max_val))
+        
+        if bestHEMS['correlationSum'] < localCorrelationSum:
+            bestHEMS['correlationSum'] = localCorrelationSum
+            bestHEMS['hems'] = hem_list
+            console.print("++++++++++++++++++++++++++")
+            console.print("localCorrelationSum: {}".format(localCorrelationSum))
+            console.print("hem_list: {}".format(hem_list))
+
+    console.print("best correlation FIT: {}".format(bestHEMS['correlationSum']))
+    console.print("best HEMs: {}".format(bestHEMS['hems']))
+
+    df= pandas.DataFrame(HEMVectorMatrix[:,index] for index in range(0,len(MUCH_BENCH_PMUS)))
+    df.columns = [h for h in MUCH_BENCH_PMUS]
+    console.print(df)
+
+    #droppo altre colonne
+    filteredOutColumns = [elm for elm in MUCH_BENCH_PMUS if elm not in bestHEMS['hems']]
+    X= df.drop(columns=filteredOutColumns)
+
+    predictions = []
+    for hem in filteredOutColumns:
+        y = df[hem]
+        # Linear Regression
+        MLR = LinearRegression(
+        copy_X = True,
+        fit_intercept = True,
+        n_jobs = 'auto',
+        normalize = 'deprecated',
+        positive = False
+        )
+
+        MLR.fit(X, y)
+
+        y_pred = MLR.predict(X)
+        MAE_MLR = mean_absolute_percentage_error(y, y_pred)
+
+        #MLP Regression
+        MLP = MLPRegressor(
+        activation = 'relu',
+        alpha = 0.0001,
+        batch_size = 'auto',
+        beta_1 = 0.9,
+        beta_2 = 0.999,
+        early_stopping = False,
+        epsilon = 1e-08,
+        hidden_layer_sizes = (100,),
+        learning_rate = 'constant',
+        learning_rate_init = 0.001,
+        max_fun = 15000,
+        max_iter = 200,
+        momentum = 0.9,
+        n_iter_no_change = 10,
+        nesterovs_momentum = True,
+        power_t = 0.5,
+        random_state = None,
+        shuffle = True,
+        solver = 'adam',
+        tol = 0.0001,
+        validation_fraction = 0.1,
+        verbose = False,
+        warm_start = False
+        )
+
+        MLP.fit(
+            X, 
+            y
+        )
+
+        # MLP.fit(X, y)
+
+        y_pred = MLP.predict(X)
+
+        MAE_MLP = mean_absolute_percentage_error(y, y_pred)
+
+        #Random Forest Regression
+        RF = RandomForestRegressor(
+        bootstrap = True,
+        ccp_alpha = 0.0,
+        criterion = 'squared_error',
+        max_depth = None,
+        max_features = 'auto',
+        max_leaf_nodes = None,
+        max_samples = None,
+        min_impurity_decrease = 0.0,
+        min_samples_leaf = 1,
+        min_samples_split = 2,
+        min_weight_fraction_leaf = 0.0,
+        n_estimators = 100,
+        n_jobs = -1,
+        oob_score = False,
+        random_state = None,
+        verbose = 0,
+        warm_start = False
+        )
+
+        RF.fit(
+            X, 
+            y
+        )
+
+        RF.fit(X, y)
+
+        y_pred = RF.predict(X)
+
+        MAE_RF = mean_absolute_percentage_error(y, y_pred)
+
+        predictions.append({
+            'HEM': hem,
+            'MLR': MAE_MLR,
+            'MLP': MAE_MLP,
+            'RF': MAE_RF
+        })
+    console.print('predictions: {}'.format(predictions))
+    # models = ['HEM', 'MLR', 'MLP', 'RF']
+    # MAEs = [hem ,MAE_MLR, MAE_MLP, MAE_RF]
+    # df1 = pandas.DataFrame([models, MAEs]).T
+    # df1.columns = ['Model', 'MAE']
+    # console.print('df1: {}'.format(df1))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -831,47 +1059,47 @@ def drawingData():
 
 
     
-    #scatter plot for correlation
-    corr = plt.figure(num=3, figsize=[10, 10])
-    scatter_x = []
-    scatter_y = []
-    scatter_n = []
-    for index,pmu in enumerate(MUCH_BENCH_PMUS):
-        for pair in PMU_STATISTICS[pmu]["p"]:
-            scatter_x.append(index)
-            scatter_y.append(pair["val"])
-            scatter_n.append(pair["pair"])
-    plt.scatter(scatter_x,scatter_y)
-    plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
-       rotation=20)  # Set text labels and properties.
-    for i, txt in enumerate(scatter_n):
-        plt.annotate(txt, (scatter_x[i],scatter_y[i]))
-    plt.rcParams["figure.figsize"] = (20,20)
-    corr.show()
+    # #scatter plot for correlation
+    # corr = plt.figure(num=3, figsize=[10, 10])
+    # scatter_x = []
+    # scatter_y = []
+    # scatter_n = []
+    # for index,pmu in enumerate(MUCH_BENCH_PMUS):
+    #     for pair in PMU_STATISTICS[pmu]["p"]:
+    #         scatter_x.append(index)
+    #         scatter_y.append(pair["val"])
+    #         scatter_n.append(pair["pair"])
+    # plt.scatter(scatter_x,scatter_y)
+    # plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+    #    rotation=20)  # Set text labels and properties.
+    # for i, txt in enumerate(scatter_n):
+    #     plt.annotate(txt, (scatter_x[i],scatter_y[i]))
+    # plt.rcParams["figure.figsize"] = (20,20)
+    # corr.show()
 
 
-    fig = plt.figure(num=2)
-    ax = plt.axes(projection='3d')
-    scatter_x = []
-    scatter_y = []
-    scatter_n = []
-    for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-        for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-            if index1 == index2:
-                continue #same PMU
-            for pair in PMU_STATISTICS[pmu1]["p"]:
-                if(pair["pair"] == pmu2):
-                    scatter_x.append(index1)
-                    scatter_y.append(index2)
-                    scatter_n.append(pair["val"])
+    # fig = plt.figure(num=2)
+    # ax = plt.axes(projection='3d')
+    # scatter_x = []
+    # scatter_y = []
+    # scatter_n = []
+    # for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
+    #     for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
+    #         if index1 == index2:
+    #             continue #same PMU
+    #         for pair in PMU_STATISTICS[pmu1]["p"]:
+    #             if(pair["pair"] == pmu2):
+    #                 scatter_x.append(index1)
+    #                 scatter_y.append(index2)
+    #                 scatter_n.append(pair["val"])
 
-    ax.scatter3D(scatter_x, scatter_y, scatter_n);    
-    ax.legend()
-    plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
-       rotation=20)
-    plt.yticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS)
-    fig.show()
-    plt.show()
+    # ax.scatter3D(scatter_x, scatter_y, scatter_n);    
+    # ax.legend()
+    # plt.xticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS,
+    #    rotation=20)
+    # plt.yticks(range(0,len(MUCH_BENCH_PMUS)), MUCH_BENCH_PMUS)
+    # fig.show()
+    # plt.show()
 
 
 
