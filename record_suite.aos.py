@@ -149,7 +149,6 @@ def main():
                     perfList.append(pmu)
                     RAW_PMU[pmu] = line.replace("\n","").split("/")[2]
 
-
     console.print("numbers of fetchable PMU events: %d" % (len(perfList)))
     console.print(",      ".join(perfList), style="green")
     console.print("numbers of PMU events each run: " + str(PMU_STEPS))
@@ -883,7 +882,16 @@ def drawingData():
     console.print('df1: {}'.format(df1))
 
 
-    ## TROVARE I 6 PMU CHE APPROSSIMANO MEGLIO IL RESTO DELLA DISTRUBUZIONE
+    with open(PERF_LIST_FILENAME) as f:
+        for line in f.readlines():
+            if "#" not in line: #filter out comments
+                console.print(line)
+                pmu = line.replace("\n","").split("/")[1]
+                RAW_PMU[pmu] = line.replace("\n","").split("/")[2]
+
+
+    ## TROVARE I 5 PMU CHE APPROSSIMANO MEGLIO IL RESTO DELLA DISTRUBUZIONE
+    ## PER FARE ESPERIMENTO
     
     bestfit_df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = MUCH_BENCH_PMUS, index = MUCH_BENCH_PMUS)
     console.print("bestfit_df: {}".format(bestfit_df))
@@ -892,7 +900,7 @@ def drawingData():
         'correlationSum': 0
     }
 
-    for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 6):
+    for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 5):
         window_columns = [elm for elm in MUCH_BENCH_PMUS if elm not in hem_list]
         window_matrix = bestfit_df.loc[hem_list,window_columns]
         # console.print("window_matrix: {}".format(window_matrix))
@@ -928,6 +936,43 @@ def drawingData():
     predictions = []
     for hem in filteredOutColumns:
         y = df[hem]
+
+        console.print('X: {}'.format(X))
+        console.print('y: {}'.format(y))
+
+        ##EXPERIMENT 
+        pmuSelected = ''
+        pmuReportList = []
+        for idx, val in enumerate(bestHEMS['hems']):
+            pmuSelected += RAW_PMU[val] if idx == 0 else "/"+RAW_PMU[val]
+        pmuSelected += "/"+RAW_PMU[hem]
+        console.print('pmuSelected: {}'.format(pmuSelected))
+        console.print('pmuSelected.split(): {}'.format(pmuSelected.split('/')))
+        cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
+        for i in range(0, 10):
+            with console.status("Benchmark for experiment # {} \n {} \n {} / {} runs".format(index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
+                results = subprocess.run(cmdBench, text=True, capture_output=True)
+                if(results.returncode == 0):
+                        console.print('results.stdout: {}'.format(results.stdout))                    
+                        pmuReportList.append(results.stdout.split('/'))
+                else:
+                    console.print("unexpected error")
+                    return -1
+        exp_df = pandas.DataFrame(pmuReportList)
+        localHems = list(bestHEMS['hems'])
+        localHems.append(hem)
+        console.print('localHems: {}'.format(localHems))
+        exp_df.columns = [localHems]
+        console.print('exp_df: {}'.format(exp_df))
+
+        X_exp= exp_df.drop(columns=hem)
+        Y_exp= exp_df.drop(columns=list(bestHEMS['hems']))
+
+        console.print('exp_df:{}'.format(exp_df))
+        console.print('X_exp:{}'.format(X_exp))
+        console.print('Y_exp:{}'.format(Y_exp))
+
+
         # Linear Regression
         MLR = LinearRegression(
         copy_X = True,
@@ -939,8 +984,14 @@ def drawingData():
 
         MLR.fit(X, y)
 
-        y_pred = MLR.predict(X)
-        MAE_MLR = mean_absolute_percentage_error(y, y_pred)
+        y_pred = MLR.predict(X_exp)
+        MAE_MLR = mean_absolute_percentage_error(Y_exp, y_pred)
+        
+        console.print('MLR')
+        console.print('Y_exp:{}'.format(Y_exp))
+        console.print('y_pred:{}'.format(y_pred))
+        console.print('MAE_MLR:{}'.format(MAE_MLR))
+
 
         #MLP Regression
         MLP = MLPRegressor(
@@ -976,9 +1027,13 @@ def drawingData():
 
         # MLP.fit(X, y)
 
-        y_pred = MLP.predict(X)
+        y_pred = MLP.predict(X_exp)
 
-        MAE_MLP = mean_absolute_percentage_error(y, y_pred)
+        MAE_MLP = mean_absolute_percentage_error(Y_exp, y_pred)
+        console.print('MLP')
+        console.print('Y_exp:{}'.format(Y_exp))
+        console.print('y_pred:{}'.format(y_pred))
+        console.print('MAE_MLP:{}'.format(MAE_MLP))
 
         #Random Forest Regression
         RF = RandomForestRegressor(
@@ -1008,17 +1063,22 @@ def drawingData():
 
         RF.fit(X, y)
 
-        y_pred = RF.predict(X)
+        y_pred = RF.predict(X_exp)
 
-        MAE_RF = mean_absolute_percentage_error(y, y_pred)
+        MAE_RF = mean_absolute_percentage_error(Y_exp, y_pred)
+        console.print('RF')
+        console.print('Y_exp:{}'.format(Y_exp))
+        console.print('y_pred:{}'.format(y_pred))
+        console.print('MAE_RF:{}'.format(MAE_RF))
 
         predictions.append({
-            'HEM': hem,
             'MLR': MAE_MLR,
             'MLP': MAE_MLP,
             'RF': MAE_RF
         })
-    console.print('predictions: {}'.format(predictions))
+
+    dataframe_pred= pandas.DataFrame(predictions, columns=['MLR', 'MLP', 'RF'], rows=filteredOutColumns)
+    console.print('dataframe_pred: {}'.format(dataframe_pred))
     # models = ['HEM', 'MLR', 'MLP', 'RF']
     # MAEs = [hem ,MAE_MLR, MAE_MLP, MAE_RF]
     # df1 = pandas.DataFrame([models, MAEs]).T
