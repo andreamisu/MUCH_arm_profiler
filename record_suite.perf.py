@@ -129,13 +129,7 @@ def initLogs():
 
 def main():
     global table, RUN_COUNTER, args, MUCH_BENCH_PMUS, MUCH_EXECUTED_ITERATION, EXPERIMENTS_RESULTS_TABLE, console
-    
-    if args.sudo:
-        if not getSudoPermissions():
-            print("User not getting sudo permissions, exit..")
-            sys.exit(-1)
-
-    
+       
     initLogs()
     console = Console()
     perfList = []
@@ -148,6 +142,7 @@ def main():
                     pmu = line.replace("\n","").split("/")[1]
                     perfList.append(pmu)
                     RAW_PMU[pmu] = line.replace("\n","").split("/")[2]
+
 
     console.print("numbers of fetchable PMU events: %d" % (len(perfList)))
     console.print(",      ".join(perfList), style="green")
@@ -218,17 +213,14 @@ def main():
     # starts experiments
     for index in range(0,len(EXPERIMENTS_LIST)):
         initalizeExperimentObject(EXPERIMENTS_LIST[index])
-        pmuSelected = ''
-        for idx, val in enumerate(EXPERIMENTS_LIST[index]):
-            pmuSelected += RAW_PMU[val] if idx == 0 else "/"+RAW_PMU[val]
-        # console.print(pmuSelected)
-        cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
+        cmdBench = ["sudo", 'perf' if args.sudo else "perf", "stat", "-e", ",".join(EXPERIMENTS_LIST[index]), "sysbench", "cpu", "run", "--time=10"]
         for i in range(0, MUCH_RUNS):
-            with console.status("Benchmark for experiment # {} \n {} \n {} / {} runs".format(index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
+            with console.status("Benchmark for experiment # %d \n %s \n %d / %d runs" % (index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
                 results = subprocess.run(cmdBench, text=True, capture_output=True)
                 if(results.returncode == 0):
-                    collectMUCHValues(results.stdout, index, EXPERIMENTS_LIST[index])
+                    collectMUCHValues(results.stderr, index, EXPERIMENTS_LIST[index])
                 else:
+                    console.print(results.stderr)
                     console.print("unexpected error")
                     return -1
 
@@ -247,7 +239,6 @@ def main():
 
 def drawingData():
     global PMU_STATISTICS, MUCH_BENCH_PMUS, console, EXPERIMENTS_RESULTS_TABLE
-
     for h in MUCH_BENCH_PMUS:
         PMU_GROUPED_HI[h] = []
         for index in range(0,len(EXPERIMENTS_LIST)):
@@ -733,7 +724,7 @@ def drawingData():
 
     
 
-    # FIG.3 CORRELAZIONE EMPIRICA QUADRATONI
+    # mvgd correlation matrix
     df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = [elm for elm in MUCH_BENCH_PMUS], index = [elm for elm in MUCH_BENCH_PMUS])
     console.print('df: {}'.format(df))
 
@@ -747,11 +738,12 @@ def drawingData():
 
     _ = sns.heatmap(df, mask=mask, center=0, annot=True,
              fmt='.2f', square=True, cmap=cmap)
-
     plt.tight_layout(pad=0.1)
     plt.show()
 
 
+
+    # empirical correlation matrix
     dataframeCorrelationMatrix = pandas.DataFrame(correlationMatrix, columns = [elm for elm in MUCH_BENCH_PMUS], index = [elm for elm in MUCH_BENCH_PMUS])
     console.print('dataframeCorrelationMatrix: {}'.format(dataframeCorrelationMatrix))
 
@@ -759,10 +751,6 @@ def drawingData():
 
     mask = numpy.triu(numpy.ones_like(dataframeCorrelationMatrix, dtype=bool))
 
-    # # Create a custom diverging palette
-    # cmap = sns.diverging_palette(250, 15, s=75, l=40,
-    #                             n=9, center="light", as_cmap=True)
-    # Create a custom diverging palette
     cmap = sns.diverging_palette(250, 15, s=75, l=40,
                                 n=9, center="light", as_cmap=True)
     _ = sns.heatmap(dataframeCorrelationMatrix, mask=mask, center=0, annot=True,
@@ -770,24 +758,10 @@ def drawingData():
     plt.tight_layout(pad=0.1)
     plt.show()
 
-
-
-
-
-    # FIG4 CORRELAZIONE MVGD QUADRATONI
-
-    #     bestCorrelation.append({
-    #         'idx': i,
-    #         'mvgdMSE': mvgdMSE,
-    #         'HEMVectorMatrix' : HEMVectorMatrix,
-    #         'mvgdCorrelationMatrix': mvgdCorrelationMatrix
-    #     })
-    # for elm in bestCorrelation:
-    #     console.print(elm)
-
-
     ## VALUE PREDICTION FOR ESTIMATED 
+
     df = pandas.DataFrame(HEMVectorMatrix[:,index] for index in range(0,len(MUCH_BENCH_PMUS)))
+
     console.print(df)
     df.columns = [h for h in MUCH_BENCH_PMUS]
     console.print(df)
@@ -894,12 +868,12 @@ def drawingData():
                 pmu = line.replace("\n","").split("/")[1]
                 RAW_PMU[pmu] = line.replace("\n","").split("/")[2]
 
-
-    ## TROVARE I 6 PMU CHE APPROSSIMANO MEGLIO IL RESTO DELLA DISTRUBUZIONE
+    ## TROVARE I 5 PMU CHE APPROSSIMANO MEGLIO IL RESTO DELLA DISTRUBUZIONE
     ## PER FARE ESPERIMENTO
     
     bestfit_df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = MUCH_BENCH_PMUS, index = MUCH_BENCH_PMUS)
     console.print("bestfit_df: {}".format(bestfit_df))
+
     bestHEMS = {
         'hems' : [],
         'correlationSum': 0
@@ -908,17 +882,10 @@ def drawingData():
     for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 6):
         window_columns = [elm for elm in MUCH_BENCH_PMUS if elm not in hem_list]
         window_matrix = bestfit_df.loc[hem_list,window_columns]
-        # console.print("window_matrix: {}".format(window_matrix))
-        # console.print("hem_list: {}".format(hem_list))
-
         localCorrelationSum = 0
         for col in window_columns:
             col_filter = window_matrix.loc[:,col]
-            # console.print("col_filter: {}".format(col_filter))
-            # console.print("col: {}".format(col))
-            # console.print("window_matrix: {}".format(window_matrix))
             localCorrelationSum += col_filter.abs().max()
-            # console.print("max_val: {}".format(max_val))
         
         if bestHEMS['correlationSum'] < localCorrelationSum:
             bestHEMS['correlationSum'] = localCorrelationSum
@@ -930,7 +897,7 @@ def drawingData():
     console.print("best correlation FIT: {}".format(bestHEMS['correlationSum']))
     console.print("best HEMs: {}".format(bestHEMS['hems']))
 
-    bestLocalHEMS = {
+    bestHEMS = {
         'hems' : [],
         'correlationSum': 0
     }
@@ -939,63 +906,64 @@ def drawingData():
     for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 5):
         window_columns = [elm for elm in MUCH_BENCH_PMUS if elm not in hem_list]
         window_matrix = bestfit_df.loc[hem_list,window_columns]
-        # console.print("window_matrix: {}".format(window_matrix))
-        # console.print("hem_list: {}".format(hem_list))
 
         localCorrelationSum = 0
         for col in window_columns:
             col_filter = window_matrix.loc[:,col]
             localCorrelationSum += col_filter.abs().max()
         
-        if bestLocalHEMS['correlationSum'] < localCorrelationSum:
-            bestLocalHEMS['correlationSum'] = localCorrelationSum
-            bestLocalHEMS['hems'] = hem_list
+        if bestHEMS['correlationSum'] < localCorrelationSum:
+            bestHEMS['correlationSum'] = localCorrelationSum
+            bestHEMS['hems'] = hem_list
             console.print("++++++++++++++++++++++++++")
             console.print("localCorrelationSum: {}".format(localCorrelationSum))
             console.print("hem_list: {}".format(hem_list))
-    
+
     df= pandas.DataFrame(HEMVectorMatrix[:,index] for index in range(0,len(MUCH_BENCH_PMUS)))
     df.columns = [h for h in MUCH_BENCH_PMUS]
     console.print(df)
 
     #droppo altre colonne
-    filteredOutColumns = [elm for elm in MUCH_BENCH_PMUS if elm not in bestLocalHEMS['hems']]
+    filteredOutColumns = [elm for elm in MUCH_BENCH_PMUS if elm not in bestHEMS['hems']]
     X= df.drop(columns=filteredOutColumns)
 
     predictions = []
     for hem in filteredOutColumns:
         y = df[hem]
 
+        localHems = list(bestHEMS['hems'])
+        localHems.append(hem)      
+
         console.print('X: {}'.format(X))
         console.print('y: {}'.format(y))
 
         ##EXPERIMENT 
-        pmuSelected = ''
         pmuReportList = []
-        for idx, val in enumerate(bestLocalHEMS['hems']):
-            pmuSelected += RAW_PMU[val] if idx == 0 else "/"+RAW_PMU[val]
-        pmuSelected += "/"+RAW_PMU[hem]
-        console.print('pmuSelected: {}'.format(pmuSelected))
-        console.print('pmuSelected.split(): {}'.format(pmuSelected.split('/')))
-        cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
+        cmdBench = ["sudo", 'perf' if args.sudo else "perf", "stat", "-e", ",".join(localHems), "sysbench", "cpu", "run", "--time=10"]
         for i in range(0, 10):
-            with console.status("Benchmark for experiment # {} \n {} \n {} / {} runs".format(index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
+            with console.status('#{} Benchmarking...'.format(i)):
+                expEvents = []
                 results = subprocess.run(cmdBench, text=True, capture_output=True)
                 if(results.returncode == 0):
-                        console.print('results.stdout: {}'.format(results.stdout))                    
-                        pmuReportList.append(results.stdout.split('/'))
+                    console.print(results.stderr)
+                    for line in results.stderr.splitlines():
+                        if any(pmu in line for pmu in localHems):
+                            pmuData = list(filter(None, line.split(" ")))
+                            expEvents.append(int(pmuData[0].replace(',','')))
+                    pmuReportList.append(expEvents)
+                    console.print('expEvents: {}'.format(expEvents))
+
                 else:
                     console.print("unexpected error")
                     return -1
+
+        console.print('pmuReportList: {}'.format(pmuReportList))
         exp_df = pandas.DataFrame(pmuReportList)
-        localHems = list(bestLocalHEMS['hems'])
-        localHems.append(hem)
-        console.print('localHems: {}'.format(localHems))
         exp_df.columns = [localHems]
         console.print('exp_df: {}'.format(exp_df))
 
         X_exp= exp_df.drop(columns=hem)
-        Y_exp= exp_df.drop(columns=list(bestLocalHEMS['hems']))
+        Y_exp= exp_df.drop(columns=list(bestHEMS['hems']))
 
         console.print('exp_df:{}'.format(exp_df))
         console.print('X_exp:{}'.format(X_exp))
@@ -1053,8 +1021,6 @@ def drawingData():
             X, 
             y
         )
-
-        # MLP.fit(X, y)
 
         y_pred = MLP.predict(X_exp)
 
@@ -1128,7 +1094,6 @@ def drawingData():
     with open('./{}.much'.format((args.model if args.model else 'benchmark')), 'wb') as f:
         pickle.dump(data, f)
     console.print("Experiments done! data is written in './{}.much file.".format((args.model if args.model else 'benchmark')))
-
     
 def initalizeExperimentObject(experiment):
     global EXPERIMENTS_RESULTS_TABLE
@@ -1152,10 +1117,12 @@ def collectMUCHValues(report, indexExperiment, experiment):
     pmuReportList = []
 
     for line in fileLines:
-        for idx in range(0, len(experiment)):
+        if any(pmu in line for pmu in experiment):
+            pmuData = list(filter(None, line.split(" ")))
+            pmuData[2] = "(100.00%)" if pmuData[2].replace("\n","") == "" else pmuData[2].replace("\n","")
             pmuReportList.append({
-                    "pmu": experiment[idx],
-                    "events": line.split('/')[idx]
+                    "pmu": pmuData[1],
+                    "events": pmuData[0]
                 })
     EXPERIMENTS_RESULTS_TABLE[indexExperiment]["data"].append(pmuReportList)
     fileObject.close()
@@ -1220,7 +1187,6 @@ if __name__ == "__main__":
                        dest="model",
                        type=str,
                        help='Model name for .much export file')
-
 
     args = parser.parse_args()
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG if args.debug == True else logging.ERROR)
