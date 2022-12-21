@@ -857,14 +857,6 @@ def drawingData():
 
 
 
-    # FIG.3 CORRELAZIONE EMPIRICA QUADRATONI
-    df = pandas.DataFrame(my_array, columns = [elm for elm in MUCH_BENCH_PMUS], index = [elm for elm in MUCH_BENCH_PMUS])
-
-
-    # FIG4 CORRELAZIONE MVGD QUADRATONI
-
-print(df)
-
     exit()
 
     # x = norm.cdf(a)

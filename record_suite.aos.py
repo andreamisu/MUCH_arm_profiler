@@ -63,7 +63,89 @@ MUCH_EXECUTED_ITERATION = {} #each index i refers to MUCH_BENCH_PMUS[i], and bas
 def mse(actual, predicted):
     return numpy.square(numpy.subtract(actual, predicted)).mean()
 
+def bestModelSelection(dataframe_pred, df, bestHEMS, MUCH_BENCH_PMUS):
+    #switch cases are only available on python 3.10 *sigh*
+    X= df.drop(columns=[elm for elm in MUCH_BENCH_PMUS if elm not in bestHEMS])
+    y= df.drop(columns=[elm for elm in MUCH_BENCH_PMUS if elm in bestHEMS])
 
+    minErrorML = 9999999
+    selectedModel = ''
+    for col in dataframe_pred.columns:
+        col_filter = dataframe_pred.loc[:,col]
+        if col_filter.max() < minErrorML:
+            minErrorML = col_filter.max()
+            selectedModel = col
+
+    print(selectedModel)
+    print(minErrorML)
+    if selectedModel == 'MLP':
+        model = MLPRegressor(
+            activation = 'relu',
+            alpha = 0.0001,
+            batch_size = 'auto',
+            beta_1 = 0.9,
+            beta_2 = 0.999,
+            early_stopping = False,
+            epsilon = 1e-08,
+            hidden_layer_sizes = (100,),
+            learning_rate = 'constant',
+            learning_rate_init = 0.001,
+            max_fun = 15000,
+            max_iter = 200,
+            momentum = 0.9,
+            n_iter_no_change = 10,
+            nesterovs_momentum = True,
+            power_t = 0.5,
+            random_state = None,
+            shuffle = True,
+            solver = 'adam',
+            tol = 0.0001,
+            validation_fraction = 0.1,
+            verbose = False,
+            warm_start = False
+        )
+    elif selectedModel == 'MLR':
+        model = LinearRegression(
+            copy_X = True,
+            fit_intercept = True,
+            n_jobs = 'auto',
+            normalize = 'deprecated',
+            positive = False
+            )
+       
+    elif selectedModel == 'RF':
+        model = RandomForestRegressor(
+        bootstrap = True,
+        ccp_alpha = 0.0,
+        criterion = 'squared_error',
+        max_depth = None,
+        max_features = 'auto',
+        max_leaf_nodes = None,
+        max_samples = None,
+        min_impurity_decrease = 0.0,
+        min_samples_leaf = 1,
+        min_samples_split = 2,
+        min_weight_fraction_leaf = 0.0,
+        n_estimators = 100,
+        n_jobs = -1,
+        oob_score = False,
+        random_state = None,
+        verbose = 0,
+        warm_start = False
+        )
+    
+    else:
+        print('unknown best model, shutting down.')
+        exit()
+    model.fit(X, y)
+    return {
+        'model': selectedModel,
+        'obj': model
+    }
+
+        
+
+    
 def pmu_allocation(MUCH_BENCH_PMUS, max):
     numPMU = len(MUCH_BENCH_PMUS)
     i = 0
@@ -144,14 +226,14 @@ def main():
         with open(PERF_LIST_FILENAME) as f:
             for line in f.readlines():
                 if "#" not in line: #filter out comments
-                    console.print(line)
+                    logging.debug((line))
                     pmu = line.replace("\n","").split("/")[1]
                     perfList.append(pmu)
                     RAW_PMU[pmu] = line.replace("\n","").split("/")[2]
 
-    console.print("numbers of fetchable PMU events: %d" % (len(perfList)))
-    console.print(",      ".join(perfList), style="green")
-    console.print("numbers of PMU events each run: " + str(PMU_STEPS))
+    logging.debug(("numbers of fetchable PMU events: %d" % (len(perfList))))
+    logging.debug((",      ".join(perfList)))
+    logging.debug(("numbers of PMU events each run: " + str(PMU_STEPS)))
     
     for x in range(PMU_STEPS, len(perfList), PMU_STEPS):
         pmuSelected = ''
@@ -174,16 +256,14 @@ def main():
         RUN_COUNTER += 1
 
     console.print(table)
-    console.print("benchmarks done!", style="blink")
     if(len(RUNS_FAILED) > 0):
         console.print("Failed runs: " + str(RUNS_FAILED), style="red")
-    console.print("check report file in " + PERF_REPORT_FILENAME)
-    console.print("number of PMUs available for MUCH evaluation: %d" % (len(MUCH_BENCH_PMUS)))
-
+        exit()
     # Algorithm for best allocation on given PMUs
+    console.print("number of HEMs available for MUCH evaluation: %d" % (len(MUCH_BENCH_PMUS)))
+    console.print(MUCH_BENCH_PMUS)
     MUCH_BENCH_PMUS = pmu_allocation(MUCH_BENCH_PMUS, ALLOCABLE_PMUS)
-    logging.debug("number of PMUs available for MUCH evaluation: %d" % (len(MUCH_BENCH_PMUS)))
-    logging.debug(MUCH_BENCH_PMUS)
+
 
     for pivotPMU in MUCH_BENCH_PMUS:
         try:
@@ -213,7 +293,9 @@ def main():
         EXPERIMENTS_LIST[idx] = k
 
     MUCH_BENCH_PMUS = [y for y in MUCH_BENCH_PMUS if "fakePMU" not in y]
-    logging.debug("experiments: \n%s" % (str(EXPERIMENTS_LIST)))
+    console.print("sub-experiments: \n")
+    for e in EXPERIMENTS_LIST:
+        console.print(e)
 
     # starts experiments
     for index in range(0,len(EXPERIMENTS_LIST)):
@@ -221,7 +303,6 @@ def main():
         pmuSelected = ''
         for idx, val in enumerate(EXPERIMENTS_LIST[index]):
             pmuSelected += RAW_PMU[val] if idx == 0 else "/"+RAW_PMU[val]
-        # console.print(pmuSelected)
         cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
         for i in range(0, MUCH_RUNS):
             with console.status("Benchmark for experiment # {} \n {} \n {} / {} runs".format(index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
@@ -229,7 +310,7 @@ def main():
                 if(results.returncode == 0):
                     collectMUCHValues(results.stdout, index, EXPERIMENTS_LIST[index])
                 else:
-                    console.print("unexpected error")
+                    console.print("Benchmark exited with {} status code, shutting down.".format(results.returncode), style='blink')
                     return -1
 
     if(args.write):
@@ -261,7 +342,7 @@ def drawingData():
                     if subexp["pmu"] == h:
                         PMU_GROUPED_HI[h].append(int(subexp["events"].replace(",","")))
                         logging.debug("events: %s" % (subexp["events"]))
-        console.print('{}={}'.format(h,PMU_GROUPED_HI[h]))
+        logging.debug(('{}={}'.format(h,PMU_GROUPED_HI[h])))
         PMU_MAPPED[h] = {}
         num = len(PMU_GROUPED_HI[h])
         steps,dist = numpy.linspace(0,1,num+1,endpoint=False, dtype=numpy.float64, retstep=True)
@@ -274,16 +355,8 @@ def drawingData():
         pmu1_argsort = numpy.zeros(len(PMU_GROUPED_HI[h]))
         for idx in range(0,len(pmu1_argsort)):
             pmu1_argsort[pmu1_indexes_sort[idx]] = mvgdSampled[idx]
-        
-        # console.print('PMU_GROUPED_HI[h]: {}'.format(PMU_GROUPED_HI[h]))
-        # console.print('pmu1_indexes_sort: {}'.format(pmu1_indexes_sort))
-        # console.print('mvgdSampled: {}'.format(mvgdSampled))
-        # console.print('pmu1_argsort: {}'.format(pmu1_indexes_sort))
-
         for idx,elm in enumerate(PMU_GROUPED_HI[h]):
             PMU_MAPPED[h][elm] = pmu1_argsort[idx]
-        # console.print('PMU_MAPPED[h]: {}'.format(PMU_MAPPED[h]))
-
 
         PMU_STATISTICS[h] = {
             "u": numpy.mean(PMU_GROUPED_HI[h], dtype = numpy.float64),
@@ -297,20 +370,12 @@ def drawingData():
             "mvgdP": []     
         }
 
-        # console.print("++++++++++++++++++++++++")
-        # console.print("PMU : %s" % (h))
-        # console.print("PMU_GROUPED_HI : %s" % (PMU_GROUPED_HI[h]))
-        # console.print("PMU expectedValue (u) value: %s" % str(PMU_STATISTICS[h]["u"]))
-        # console.print("PMU standard deviation (o) value: %s" % str(PMU_STATISTICS[h]["o"]))
-        # console.print("PMU variance (o2) value: %s" % str(PMU_STATISTICS[h]["o2"]))
-
     # empirical correlation between 2 hems  ρˆij 
     counter = 0
     for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):
         for index in range(0,len(EXPERIMENTS_LIST)):
             #experiment in which both are present
             if pmu_couple[0] in EXPERIMENTS_LIST[index] and pmu_couple[1] in EXPERIMENTS_LIST[index]:
-
                 logging.debug("++++++++++++++++++++++++")
                 logging.debug("correlation exp: %s + %s" % (pmu_couple[0], pmu_couple[1]))
                 logging.debug("exp: %s" % str(EXPERIMENTS_LIST[index]))
@@ -318,25 +383,23 @@ def drawingData():
                 pmu2 = []
                 p = 0
                 for data in EXPERIMENTS_RESULTS_TABLE[index]["data"]:
-                    #console.print("data: %s" % data)
                     x = -1
                     y = -1
                     for subexp in data:
-                        #console.print("subexp: %s" % subexp)
                         if subexp["pmu"] == pmu_couple[0]:
                             x = int(subexp["events"].replace(",",""))
                         if subexp["pmu"] == pmu_couple[1]:
                             y = int(subexp["events"].replace(",",""))
                     if x == -1 or y == -1:
-                        console.print("Error: didn't find empirical correlation")
-                        return
+                        console.print("Error: didn't find empirical correlation, shutting down")
+                        exit()
                     pmu1.append(x)
                     pmu2.append(y)
                 # pearson correlation
                 p, pvalue = pearsonr(pmu1, pmu2)
                 logging.debug('{} + {} correlation: {}'.format(pmu_couple[0], pmu_couple[1],p))
-                console.print('pmu1: {}'.format(pmu1))
-                console.print('pmu2: {}'.format(pmu2))
+                logging.debug('pmu1: {}'.format(pmu1))
+                logging.debug('pmu2: {}'.format(pmu2))
 
                 pmu1_argsort = []
                 pmu2_argsort = []
@@ -355,10 +418,10 @@ def drawingData():
                 
 
                 p_mapped, pvalue_mapped = pearsonr(pmu1_argsort, pmu2_argsort)
-                console.print('%s + %s correlation: %f' % (pmu_couple[0], pmu_couple[1],p_mapped))
+                logging.debug('%s + %s correlation: %f' % (pmu_couple[0], pmu_couple[1],p_mapped))
 
 
-                ## tenere queste variance e std per creatione correlation matrix MVGD
+                ## tenere queste variance e std per creazione correlation matrix MVGD
                 pmu1_mapped_obj = {
                     "u": numpy.mean(pmu1_argsort, dtype = numpy.float64),
                     "o": numpy.std(pmu1_argsort, dtype = numpy.float64), #standard deviation of hi subexperiment in PMU_GROUPED_HI[h] on u mean
@@ -418,12 +481,12 @@ def drawingData():
     #Correlation matrix S
     correlationMap = []
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-        console.print("pmu1: %s" % pmu1)
+        logging.debug("pmu1: %s" % pmu1)
         correlationLine = []
         for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-            console.print("pmu2: %s" % pmu2)
+            logging.debug("pmu2: %s" % pmu2)
             if pmu1==pmu2:
-                console.print("same")
+                logging.debug("same")
                 correlationLine.append(float(1)) #correlation between same values is 1
             else:
                 for corr in PMU_STATISTICS[pmu2]['p']:
@@ -431,7 +494,7 @@ def drawingData():
                         correlationLine.append(corr['val'])
         correlationMap.append(correlationLine)
     console.print("++++++++++++++++++++++++++++++++++")
-    console.print(correlationMap)
+    logging.debug(correlationMap)
     correlationMatrix = numpy.array(correlationMap, dtype=numpy.float64)
     console.print("correlation matrix: {}".format(correlationMatrix))
     console.print("++++++++++++++++++++++++++++++++++")
@@ -443,10 +506,10 @@ def drawingData():
 
     covarianceMap = []
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-        console.print("pmu1: %s" % pmu1)
+        logging.debug("pmu1: %s" % pmu1)
         covarianceLine = []
         for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-            console.print("pmu2: %s" % pmu2)
+            logging.debug("pmu2: %s" % pmu2)
             if pmu1==pmu2:
                 covarianceLine.append(PMU_STATISTICS[pmu2]['o2'])
             else:
@@ -455,22 +518,11 @@ def drawingData():
                         covarianceLine.append(corr['val'])
                         continue
         covarianceMap.append(covarianceLine)
-        # console.print("PMU %s : %s" % (pmu1, str(covarianceLine)))
-        # PMU_STATISTICS[pmu1]['mvgd'] = multivariate_normal(mean=mean_array, cov=covarianceLine)
     console.print("++++++++++++++++++++++++++++++++++")
     console.print("covariance matrix:")
+    console.print("++++++++++++++++++++++++++++++++++")
     covarianceMatrix = numpy.array(covarianceMap, dtype = numpy.float64)
     console.print(covarianceMatrix)
-
-    #multivariate normal MVGD  𝑋 ∼ N𝑛ℎ(𝜇,ˆ Σˆ)
-    # mean_array = []
-    # for pmu in MUCH_BENCH_PMUS:
-    #     mean_array.append(PMU_STATISTICS[pmu]['u'])
-    # console.print("mean array: %s" % mean_array)
-    # # mvgd = multivariate_normal.pdf(mean=mean_array, cov=covarianceMatrix)
-    # mvgd = multivariate_normal(mean=mean_array, cov=covarianceMatrix, allow_singular=True)
-    # console.print(mvgd)
-
 
     #Application of copula theory
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
@@ -479,8 +531,8 @@ def drawingData():
         steps = steps.tolist()
         steps.remove(0)
         meanSteps = numpy.mean(steps)
-        console.print("num is %d" % num)
-        console.print("steps are %s" % str(steps))
+        logging.debug("num is %d" % num)
+        logging.debug("steps are %s" % str(steps))
 
         # A uniform sample can be transformed into a
         # Gaussian sample by applying the inverse function 
@@ -488,7 +540,7 @@ def drawingData():
 
         # Percent point function (inverse of cdf — percentiles).
         mvgdSampled = list(map(lambda elm: norm.ppf(elm, loc=0, scale=1), steps)) 
-        console.print(mvgdSampled)
+        logging.debug(mvgdSampled)
         PMU_STATISTICS[pmu1]['ppf'] = {
                 "val" : mvgdSampled,
                 "u": numpy.mean(mvgdSampled),
@@ -500,10 +552,10 @@ def drawingData():
 
     for pmu_couple in itertools.combinations(MUCH_BENCH_PMUS, 2):      
         p, _ = pearsonr(PMU_STATISTICS[pmu_couple[0]]['ppf']['val'], PMU_STATISTICS[pmu_couple[1]]['ppf']['val'])
-        console.print("ppf0 -> " + str(PMU_STATISTICS[pmu_couple[0]]['ppf']))
-        console.print("ppf1 -> " + str(PMU_STATISTICS[pmu_couple[1]]['ppf']))
-        console.print("covariance : {}".format(numpy.cov([PMU_STATISTICS[pmu_couple[0]]['ppf']['val'],PMU_STATISTICS[pmu_couple[0]]['ppf']['val']])))
-        console.print("p : {}".format(p))
+        logging.debug("ppf0 -> " + str(PMU_STATISTICS[pmu_couple[0]]['ppf']))
+        logging.debug("ppf1 -> " + str(PMU_STATISTICS[pmu_couple[1]]['ppf']))
+        logging.debug("covariance : {}".format(numpy.cov([PMU_STATISTICS[pmu_couple[0]]['ppf']['val'],PMU_STATISTICS[pmu_couple[0]]['ppf']['val']])))
+        logging.debug("p : {}".format(p))
         PMU_STATISTICS[pmu_couple[0]]['ppf']["p"].append({
             "pair" : pmu_couple[1],
             "val": p
@@ -524,12 +576,11 @@ def drawingData():
         
     correlationMap = []
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-        console.print("pmu1: %s" % pmu1)
+        logging.debug("pmu1: %s" % pmu1)
         correlationLine = []
         for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-            console.print("pmu2: %s" % pmu2)
+            logging.debug("pmu2: %s" % pmu2)
             if pmu1==pmu2:
-                console.print("same")
                 correlationLine.append(float(1)) #correlation between same values is 1
             else:
                 for corr in PMU_STATISTICS[pmu2]['p']:
@@ -537,39 +588,30 @@ def drawingData():
                         correlationLine.append(corr['val_mapped'])
         correlationMap.append(correlationLine)
     console.print("++++++++++++++++++++++++++++++++++")
-    console.print("correlation matrix:")
-    console.print(correlationMap)
     gaussianCorrelationMatrix = numpy.array(correlationMap, dtype=numpy.float64)
     console.print("gaussianCorrelationMatrix: {}".format(gaussianCorrelationMatrix))
+    console.print("++++++++++++++++++++++++++++++++++")
 
     #Covariance matrix Ʃˆ0
     gaussianCovarianceMap = []
     for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-        console.print("pmu1: %s" % pmu1)
+        logging.debug("pmu1: %s" % pmu1)
         covarianceLine = []
         for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-            console.print("pmu2: %s" % pmu2)
+            logging.debug("pmu2: %s" % pmu2)
             if pmu1==pmu2:
                 covarianceLine.append(PMU_STATISTICS[pmu1]['o2_mapped'])
             else:
                 for corr in PMU_STATISTICS[pmu1]['o_pair']:
                     if corr['pair'] == pmu2:
-                        console.print("++++++++++++++++++++++++++++++++++")
-                        console.print("corr['pair']: {}".format(corr['pair']))
-                        console.print("corr['val']: {}".format(corr['val_mapped']))
                         covarianceLine.append(corr['val_mapped'])
                         continue
         gaussianCovarianceMap.append(covarianceLine)
     console.print("++++++++++++++++++++++++++++++++++")
-    console.print("covariance matrix:")
-
     gaussianCovarianceMatrix = numpy.matrix(gaussianCovarianceMap, dtype = numpy.float64)
-    console.print("gaussianCovarianceMatrix: {}".format(gaussianCovarianceMatrix))
-    console.print("covarianceMatrix: {}".format(covarianceMatrix))
+    console.print("gaussianCovarianceMatrix:\n{}".format(gaussianCovarianceMatrix))
+    console.print("++++++++++++++++++++++++++++++++++")
 
-    console.print("correlationMatrix: {}".format(correlationMatrix))
-    console.print("gaussianCorrelationMatrix: {}".format(gaussianCorrelationMatrix))
-         
     #multivariate normal MVGD 𝑋 ∼ N𝑛ℎ(0, Σˆ0)
     new_correlation = []
     for iteration in range(0,OPTIMIZZATION_STEPS):
@@ -600,21 +642,21 @@ def drawingData():
 
         for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
             for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-                console.print("len MUCH_BENCH: {}".format(MUCH_BENCH_PMUS))
-                console.print("index1: {}".format(index1))
-                console.print("index2: {}".format(index2))
+                logging.debug("len MUCH_BENCH: {}".format(MUCH_BENCH_PMUS))
+                logging.debug("index1: {}".format(index1))
+                logging.debug("index2: {}".format(index2))
                 if index2 <= index1:
                     continue #same PMU
                 pmu1Values = HEMVectorMatrix[index1,:]
                 pmu2Values = HEMVectorMatrix[index2,:]
                 mvgdP, _ = pearsonr(pmu1Values, pmu2Values)
-                console.print(mvgdP)
+                logging.debug(mvgdP)
                 for pair in PMU_STATISTICS[pmu1]["p"]:
                     if(pair["pair"] == pmu2):
                         empiricalP = pair["val"]
                         deltaP = abs(mvgdP - empiricalP)
-                        console.print('mvgdP: {}'.format(mvgdP))
-                        console.print('empiricalP: {}'.format(empiricalP))
+                        logging.debug('mvgdP: {}'.format(mvgdP))
+                        logging.debug('empiricalP: {}'.format(empiricalP))
                         # PMU_STATISTICS[pmu1]['mvgdP'].append({
                         #     'pair': pmu2,
                         #     'value_p': mvgdP,
@@ -642,12 +684,11 @@ def drawingData():
         # optimization step
         correlationMap = []
         for index1,pmu1 in enumerate(MUCH_BENCH_PMUS):
-            console.print("pmu1: %s" % pmu1)
+            logging.debug("pmu1: %s" % pmu1)
             correlationLine = []
             for index2,pmu2 in enumerate(MUCH_BENCH_PMUS):
-                console.print("pmu2: %s" % pmu2)
+                logging.debug("pmu2: %s" % pmu2)
                 if pmu1==pmu2:
-                    console.print("same")
                     correlationLine.append(float(1)) #correlation between same values is 1
                 else:
                     # for corr in PMU_STATISTICS[pmu1]['mvgdP']:
@@ -660,23 +701,21 @@ def drawingData():
         console.print("correlation matrix:")
         mvgdCorrelationMatrix = numpy.array(correlationMap, dtype=numpy.float64)
         console.print(mvgdCorrelationMatrix)
-
-        #https://stats.stackexchange.com/questions/28461/how-to-denote-element-wise-difference-of-two-matrices
-        #For calculating the MSE, you have to subtract every element of matrix 2 from every element of matrix 1
+        console.print("++++++++++++++++++++++++++++++++++")
 
         mse = 0
-        console.print("correlationMatrix: {}".format(correlationMatrix))
-        console.print("mvgdCorrelationMatrix: {}".format(mvgdCorrelationMatrix))
+        logging.debug("correlationMatrix: {}".format(correlationMatrix))
+        logging.debug("mvgdCorrelationMatrix: {}".format(mvgdCorrelationMatrix))
         correlationDeltaMatrix = []
         for index_i in range(0,len(MUCH_BENCH_PMUS)):
             correlationDeltaArray = []
             for index_j in range(0,len(MUCH_BENCH_PMUS)):
-                console.print("correlationMatrix[{}][{}]: {}".format(index_i, index_j, correlationMatrix[index_i][index_j]))
-                console.print("correlationMatrix[{}][{}]: {}".format(index_i, index_j, mvgdCorrelationMatrix[index_i][index_j]))
+                logging.debug("correlationMatrix[{}][{}]: {}".format(index_i, index_j, correlationMatrix[index_i][index_j]))
+                logging.debug("correlationMatrix[{}][{}]: {}".format(index_i, index_j, mvgdCorrelationMatrix[index_i][index_j]))
                 correlationDeltaArray.append(abs(correlationMatrix[index_i][index_j] - mvgdCorrelationMatrix[index_i][index_j]))
                 mse += math.pow(correlationMatrix[index_i][index_j] - mvgdCorrelationMatrix[index_i][index_j], 2)
             correlationDeltaMatrix.append(correlationDeltaArray)
-        console.print("mse: {}".format(mse))
+        logging.debug("mse: {}".format(mse))
         
         new_correlation.append({
             'correlationoject':correlationoject,
@@ -697,8 +736,6 @@ def drawingData():
 
     console.print('+++++++++++++++++++++')
     console.print('minimum mse: {}'.format(mse))
-    console.print('selected_index: {}'.format(selected_index))
-    console.print('HEMVectorMatrix: {}'.format(new_correlation[selected_index]['HEMVectorMatrix']))
     console.print(tableP)
 
     flatCorrelation = []
@@ -708,418 +745,259 @@ def drawingData():
 
 
     a = numpy.array(flatCorrelation)
-
-    ## TODO: REGRESSIONI E CORRELAZIONI
-    # PREDICTION USING CORRELAZIONI
-    # RIMOZIONI COLONNE ALTA CORRELAZIONE, CHE POSSIAMO DERIVARE
-
-
-
-    ## TODO: PLOTTING
-    ## FIG. 1 percentile delta correlazione
-
-    # FIG.2 AVG. MSE IN BASE A QUANTE ITERAZIONI DELLO STEP DI OTTIMIZZAZIONI ABBIAMO
-
-    # FIG.3 CORRELAZIONE EMPIRICA QUADRATONI
-
-    # FIG4 CORRELAZIONE MVGD QUADRATONI
-
-    console.print('np.array(flatCorrelation): {}'.format(a))
-    console.print('np.percentile(a, 20): {}'.format(numpy.percentile(a, 20)))
-    console.print('np.percentile(a, 50): {}'.format(numpy.percentile(a, 50)))
-    console.print('np.percentile(a, 70): {}'.format(numpy.percentile(a, 70)))
-    console.print('np.percentile(a, 90): {}'.format(numpy.percentile(a, 90)))
-    console.print('np.percentile(a, 99): {}'.format(numpy.percentile(a, 99)))
+    logging.debug('np.array(flatCorrelation): {}'.format(a))
+    logging.debug('np.percentile(a, 20): {}'.format(numpy.percentile(a, 20)))
+    logging.debug('np.percentile(a, 50): {}'.format(numpy.percentile(a, 50)))
+    logging.debug('np.percentile(a, 70): {}'.format(numpy.percentile(a, 70)))
+    logging.debug('np.percentile(a, 90): {}'.format(numpy.percentile(a, 90)))
+    logging.debug('np.percentile(a, 99): {}'.format(numpy.percentile(a, 99)))
 
     
 
-    # FIG.3 CORRELAZIONE EMPIRICA QUADRATONI
+    #plotting mvgd correlation matrix
     df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = [elm for elm in MUCH_BENCH_PMUS], index = [elm for elm in MUCH_BENCH_PMUS])
-    console.print('df: {}'.format(df))
-
+    console.print('df:\n{}'.format(df))
     plt.figure(figsize=(16,12))
-
     mask = numpy.triu(numpy.ones_like(df, dtype=bool))
-
-    # Create a custom diverging palette
     cmap = sns.diverging_palette(250, 15, s=75, l=40,
                                 n=9, center="light", as_cmap=True)
-
     _ = sns.heatmap(df, mask=mask, center=0, annot=True,
              fmt='.2f', square=True, cmap=cmap)
-
     plt.tight_layout(pad=0.1)
+    plt.savefig("mvgd_correlation_matrix.svg", format="svg")
     plt.show()
 
-
+    #plotting empirical correlation matrix
     dataframeCorrelationMatrix = pandas.DataFrame(correlationMatrix, columns = [elm for elm in MUCH_BENCH_PMUS], index = [elm for elm in MUCH_BENCH_PMUS])
-    console.print('dataframeCorrelationMatrix: {}'.format(dataframeCorrelationMatrix))
-
     plt.figure(figsize=(16,12))
-
     mask = numpy.triu(numpy.ones_like(dataframeCorrelationMatrix, dtype=bool))
-
-    # # Create a custom diverging palette
-    # cmap = sns.diverging_palette(250, 15, s=75, l=40,
-    #                             n=9, center="light", as_cmap=True)
-    # Create a custom diverging palette
     cmap = sns.diverging_palette(250, 15, s=75, l=40,
                                 n=9, center="light", as_cmap=True)
     _ = sns.heatmap(dataframeCorrelationMatrix, mask=mask, center=0, annot=True,
              fmt='.2f', square=True, cmap=cmap)
     plt.tight_layout(pad=0.1)
+    plt.savefig("empirical_correlation_matrix.svg", format="svg")
     plt.show()
-
-
-
-
-
-    # FIG4 CORRELAZIONE MVGD QUADRATONI
-
-    #     bestCorrelation.append({
-    #         'idx': i,
-    #         'mvgdMSE': mvgdMSE,
-    #         'HEMVectorMatrix' : HEMVectorMatrix,
-    #         'mvgdCorrelationMatrix': mvgdCorrelationMatrix
-    #     })
-    # for elm in bestCorrelation:
-    #     console.print(elm)
-
-
-    ## VALUE PREDICTION FOR ESTIMATED 
-    df = pandas.DataFrame(HEMVectorMatrix[:,index] for index in range(0,len(MUCH_BENCH_PMUS)))
-    console.print(df)
-    df.columns = [h for h in MUCH_BENCH_PMUS]
-    console.print(df)
-
-    y = df['l2d_cache_refill']
-    X = df.drop(columns='l2d_cache_refill')
-
-
-    # Linear Regression
-    MLR = LinearRegression(
-    copy_X = True,
-    fit_intercept = True,
-    n_jobs = 'auto',
-    normalize = 'deprecated',
-    positive = False
-    )
-
-    MLR.fit(X, y)
-
-    y_pred = MLR.predict(X)
-    MAE_MLR = mean_absolute_percentage_error(y, y_pred)
-
-    #MLP Regression
-    MLP = MLPRegressor(
-    activation = 'relu',
-    alpha = 0.0001,
-    batch_size = 'auto',
-    beta_1 = 0.9,
-    beta_2 = 0.999,
-    early_stopping = False,
-    epsilon = 1e-08,
-    hidden_layer_sizes = (100,),
-    learning_rate = 'constant',
-    learning_rate_init = 0.001,
-    max_fun = 15000,
-    max_iter = 200,
-    momentum = 0.9,
-    n_iter_no_change = 10,
-    nesterovs_momentum = True,
-    power_t = 0.5,
-    random_state = None,
-    shuffle = True,
-    solver = 'adam',
-    tol = 0.0001,
-    validation_fraction = 0.1,
-    verbose = False,
-    warm_start = False
-    )
-
-    MLP.fit(
-        X, 
-        y
-    )
-
-    MLP.fit(X, y)
-
-    y_pred = MLP.predict(X)
-
-    MAE_MLP = mean_absolute_percentage_error(y, y_pred)
-
-    #Random Forest Regression
-    RF = RandomForestRegressor(
-    bootstrap = True,
-    ccp_alpha = 0.0,
-    criterion = 'squared_error',
-    max_depth = None,
-    max_features = 'auto',
-    max_leaf_nodes = None,
-    max_samples = None,
-    min_impurity_decrease = 0.0,
-    min_samples_leaf = 1,
-    min_samples_split = 2,
-    min_weight_fraction_leaf = 0.0,
-    n_estimators = 100,
-    n_jobs = -1,
-    oob_score = False,
-    random_state = None,
-    verbose = 0,
-    warm_start = False
-    )
-
-    RF.fit(
-        X, 
-        y
-    )
-
-    RF.fit(X, y)
-
-    y_pred = RF.predict(X)
-
-    MAE_RF = mean_absolute_percentage_error(y, y_pred)
-
-    models = ['MLR', 'MLP', 'RF']
-    MAEs = [MAE_MLR, MAE_MLP, MAE_RF]
-    df1 = pandas.DataFrame([models, MAEs]).T
-    df1.columns = ['Model', 'MAE']
-    console.print('df1: {}'.format(df1))
 
 
     with open(PERF_LIST_FILENAME) as f:
         for line in f.readlines():
             if "#" not in line: #filter out comments
-                console.print(line)
+                logging.debug(line)
                 pmu = line.replace("\n","").split("/")[1]
                 RAW_PMU[pmu] = line.replace("\n","").split("/")[2]
 
 
-    ## TROVARE I 6 PMU CHE APPROSSIMANO MEGLIO IL RESTO DELLA DISTRUBUZIONE
-    ## PER FARE ESPERIMENTO
-    
-    bestfit_df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = MUCH_BENCH_PMUS, index = MUCH_BENCH_PMUS)
-    console.print("bestfit_df: {}".format(bestfit_df))
+    ## HEMs cluster creation using 6 slots
+
+
     bestHEMS = {
         'hems' : [],
         'correlationSum': 0
     }
-
+    bestfit_df = pandas.DataFrame(new_correlation[selected_index]['mvgdCorrelationMatrix'], columns = MUCH_BENCH_PMUS, index = MUCH_BENCH_PMUS)
     for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 6):
         window_columns = [elm for elm in MUCH_BENCH_PMUS if elm not in hem_list]
         window_matrix = bestfit_df.loc[hem_list,window_columns]
-        # console.print("window_matrix: {}".format(window_matrix))
-        # console.print("hem_list: {}".format(hem_list))
+        logging.debug("window_matrix: {}".format(window_matrix))
+        logging.debug("hem_list: {}".format(hem_list))
 
         localCorrelationSum = 0
         for col in window_columns:
             col_filter = window_matrix.loc[:,col]
-            # console.print("col_filter: {}".format(col_filter))
-            # console.print("col: {}".format(col))
-            # console.print("window_matrix: {}".format(window_matrix))
             localCorrelationSum += col_filter.abs().max()
-            # console.print("max_val: {}".format(max_val))
         
         if bestHEMS['correlationSum'] < localCorrelationSum:
             bestHEMS['correlationSum'] = localCorrelationSum
-            bestHEMS['hems'] = hem_list
+            bestHEMS['hems']  = hem_list
             console.print("++++++++++++++++++++++++++")
             console.print("localCorrelationSum: {}".format(localCorrelationSum))
             console.print("hem_list: {}".format(hem_list))
+            console.print("++++++++++++++++++++++++++")
 
     console.print("best correlation FIT: {}".format(bestHEMS['correlationSum']))
     console.print("best HEMs: {}".format(bestHEMS['hems']))
+    
 
+
+
+    #VALIDATION: FIND 5 BEST FITTING HEMs TO USE THEM IN EXPERIMENTS AND UNDERSTAND MEAN ERROR ON PREDICTIONS
     bestLocalHEMS = {
         'hems' : [],
         'correlationSum': 0
     }
+    with console.status("Finding HEMs cluster using 5 HEMs"):
+        for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 5):
+            window_columns = [elm for elm in MUCH_BENCH_PMUS if elm not in hem_list]
+            window_matrix = bestfit_df.loc[hem_list,window_columns]
+            localCorrelationSum = 0
+            for col in window_columns:
+                col_filter = window_matrix.loc[:,col]
+                localCorrelationSum += col_filter.abs().max()
+            
+            if bestLocalHEMS['correlationSum'] < localCorrelationSum:
+                bestLocalHEMS['correlationSum'] = localCorrelationSum
+                bestLocalHEMS['hems'] = hem_list
+                logging.debug("++++++++++++++++++++++++++")
+                logging.debug("localCorrelationSum: {}".format(localCorrelationSum))
+                logging.debug("hem_list: {}".format(hem_list))
 
-    #VALIDATION: FIND 5 BEST FITTING HEMs TO USE THEM IN EXPERIMENTS AND UNDERSTAND MEAN ERROR ON PREDICTIONS
-    for hem_list in itertools.combinations(MUCH_BENCH_PMUS, 5):
-        window_columns = [elm for elm in MUCH_BENCH_PMUS if elm not in hem_list]
-        window_matrix = bestfit_df.loc[hem_list,window_columns]
-        # console.print("window_matrix: {}".format(window_matrix))
-        # console.print("hem_list: {}".format(hem_list))
+    console.print("best correlation FIT: {}".format(bestLocalHEMS['correlationSum']))
+    console.print("best HEMs: {}".format(bestLocalHEMS['hems']))
 
-        localCorrelationSum = 0
-        for col in window_columns:
-            col_filter = window_matrix.loc[:,col]
-            localCorrelationSum += col_filter.abs().max()
-        
-        if bestLocalHEMS['correlationSum'] < localCorrelationSum:
-            bestLocalHEMS['correlationSum'] = localCorrelationSum
-            bestLocalHEMS['hems'] = hem_list
-            console.print("++++++++++++++++++++++++++")
-            console.print("localCorrelationSum: {}".format(localCorrelationSum))
-            console.print("hem_list: {}".format(hem_list))
-    
     df= pandas.DataFrame(HEMVectorMatrix[:,index] for index in range(0,len(MUCH_BENCH_PMUS)))
     df.columns = [h for h in MUCH_BENCH_PMUS]
-    console.print(df)
-
-    #droppo altre colonne
     filteredOutColumns = [elm for elm in MUCH_BENCH_PMUS if elm not in bestLocalHEMS['hems']]
     X= df.drop(columns=filteredOutColumns)
-
     predictions = []
     for hem in filteredOutColumns:
-        y = df[hem]
+        with console.status("testing out ML models using {}".format(hem)):
+            y = df[hem]
+            logging.debug('X: {}'.format(X))
+            logging.debug('y: {}'.format(y))
 
-        console.print('X: {}'.format(X))
-        console.print('y: {}'.format(y))
-
-        ##EXPERIMENT 
-        pmuSelected = ''
-        pmuReportList = []
-        for idx, val in enumerate(bestLocalHEMS['hems']):
-            pmuSelected += RAW_PMU[val] if idx == 0 else "/"+RAW_PMU[val]
-        pmuSelected += "/"+RAW_PMU[hem]
-        console.print('pmuSelected: {}'.format(pmuSelected))
-        console.print('pmuSelected.split(): {}'.format(pmuSelected.split('/')))
-        cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
-        for i in range(0, 10):
-            with console.status("Benchmark for experiment # {} \n {} \n {} / {} runs".format(index+1, ",".join(EXPERIMENTS_LIST[index]), i, MUCH_RUNS)):
+            ##EXPERIMENT 
+            pmuSelected = ''
+            pmuReportList = []
+            for idx, val in enumerate(bestLocalHEMS['hems']):
+                pmuSelected += RAW_PMU[val] if idx == 0 else "/"+RAW_PMU[val]
+            pmuSelected += "/"+RAW_PMU[hem]
+            logging.debug('pmuSelected: {}'.format(pmuSelected))
+            logging.debug('pmuSelected.split(): {}'.format(pmuSelected.split('/')))
+            cmdBench = ["sudo", PERF_COMMAND if args.sudo else PERF_COMMAND , pmuSelected]
+            for i in range(0, 10):
                 results = subprocess.run(cmdBench, text=True, capture_output=True)
                 if(results.returncode == 0):
-                        console.print('results.stdout: {}'.format(results.stdout))                    
+                        logging.debug('results.stdout: {}'.format(results.stdout))                    
                         pmuReportList.append(results.stdout.split('/'))
                 else:
-                    console.print("unexpected error")
+                    logging.debug("unexpected error")
                     return -1
-        exp_df = pandas.DataFrame(pmuReportList)
-        localHems = list(bestLocalHEMS['hems'])
-        localHems.append(hem)
-        console.print('localHems: {}'.format(localHems))
-        exp_df.columns = [localHems]
-        console.print('exp_df: {}'.format(exp_df))
+            exp_df = pandas.DataFrame(pmuReportList)
+            localHems = list(bestLocalHEMS['hems'])
+            localHems.append(hem)
+            logging.debug('localHems: {}'.format(localHems))
+            exp_df.columns = [localHems]
+            logging.debug('exp_df: {}'.format(exp_df))
 
-        X_exp= exp_df.drop(columns=hem)
-        Y_exp= exp_df.drop(columns=list(bestLocalHEMS['hems']))
+            X_exp= exp_df.drop(columns=hem)
+            Y_exp= exp_df.drop(columns=list(bestLocalHEMS['hems']))
 
-        console.print('exp_df:{}'.format(exp_df))
-        console.print('X_exp:{}'.format(X_exp))
-        console.print('Y_exp:{}'.format(Y_exp))
-
-
-        # Linear Regression
-        MLR = LinearRegression(
-        copy_X = True,
-        fit_intercept = True,
-        n_jobs = 'auto',
-        normalize = 'deprecated',
-        positive = False
-        )
-
-        MLR.fit(X, y)
-
-        y_pred = MLR.predict(X_exp)
-        MAE_MLR = mean_absolute_percentage_error(Y_exp, y_pred)
-        
-        console.print('MLR')
-        console.print('Y_exp:{}'.format(Y_exp))
-        console.print('y_pred:{}'.format(y_pred))
-        console.print('MAE_MLR:{}'.format(MAE_MLR))
+            logging.debug('exp_df:{}'.format(exp_df))
+            logging.debug('X_exp:{}'.format(X_exp))
+            logging.debug('Y_exp:{}'.format(Y_exp))
 
 
-        #MLP Regression
-        MLP = MLPRegressor(
-        activation = 'relu',
-        alpha = 0.0001,
-        batch_size = 'auto',
-        beta_1 = 0.9,
-        beta_2 = 0.999,
-        early_stopping = False,
-        epsilon = 1e-08,
-        hidden_layer_sizes = (100,),
-        learning_rate = 'constant',
-        learning_rate_init = 0.001,
-        max_fun = 15000,
-        max_iter = 200,
-        momentum = 0.9,
-        n_iter_no_change = 10,
-        nesterovs_momentum = True,
-        power_t = 0.5,
-        random_state = None,
-        shuffle = True,
-        solver = 'adam',
-        tol = 0.0001,
-        validation_fraction = 0.1,
-        verbose = False,
-        warm_start = False
-        )
+            # Linear Regression
+            MLR = LinearRegression(
+            copy_X = True,
+            fit_intercept = True,
+            n_jobs = 'auto',
+            normalize = 'deprecated',
+            positive = False
+            )
 
-        MLP.fit(
-            X, 
-            y
-        )
+            MLR.fit(X, y)
 
-        # MLP.fit(X, y)
+            y_pred = MLR.predict(X_exp)
+            MAE_MLR = mean_absolute_percentage_error(Y_exp, y_pred)
+            
+            logging.debug('MLR')
+            logging.debug('Y_exp:{}'.format(Y_exp))
+            logging.debug('y_pred:{}'.format(y_pred))
+            logging.debug('MAE_MLR:{}'.format(MAE_MLR))
 
-        y_pred = MLP.predict(X_exp)
 
-        MAE_MLP = mean_absolute_percentage_error(Y_exp, y_pred)
-        console.print('MLP')
-        console.print('Y_exp:{}'.format(Y_exp))
-        console.print('y_pred:{}'.format(y_pred))
-        console.print('MAE_MLP:{}'.format(MAE_MLP))
+            #MLP Regression
+            MLP = MLPRegressor(
+            activation = 'relu',
+            alpha = 0.0001,
+            batch_size = 'auto',
+            beta_1 = 0.9,
+            beta_2 = 0.999,
+            early_stopping = False,
+            epsilon = 1e-08,
+            hidden_layer_sizes = (100,),
+            learning_rate = 'constant',
+            learning_rate_init = 0.001,
+            max_fun = 15000,
+            max_iter = 200,
+            momentum = 0.9,
+            n_iter_no_change = 10,
+            nesterovs_momentum = True,
+            power_t = 0.5,
+            random_state = None,
+            shuffle = True,
+            solver = 'adam',
+            tol = 0.0001,
+            validation_fraction = 0.1,
+            verbose = False,
+            warm_start = False
+            )
 
-        #Random Forest Regression
-        RF = RandomForestRegressor(
-        bootstrap = True,
-        ccp_alpha = 0.0,
-        criterion = 'squared_error',
-        max_depth = None,
-        max_features = 'auto',
-        max_leaf_nodes = None,
-        max_samples = None,
-        min_impurity_decrease = 0.0,
-        min_samples_leaf = 1,
-        min_samples_split = 2,
-        min_weight_fraction_leaf = 0.0,
-        n_estimators = 100,
-        n_jobs = -1,
-        oob_score = False,
-        random_state = None,
-        verbose = 0,
-        warm_start = False
-        )
+            MLP.fit(
+                X, 
+                y
+            )
 
-        RF.fit(
-            X, 
-            y
-        )
+            # MLP.fit(X, y)
 
-        RF.fit(X, y)
+            y_pred = MLP.predict(X_exp)
 
-        y_pred = RF.predict(X_exp)
+            MAE_MLP = mean_absolute_percentage_error(Y_exp, y_pred)
+            logging.debug('MLP')
+            logging.debug('Y_exp:{}'.format(Y_exp))
+            logging.debug('y_pred:{}'.format(y_pred))
+            logging.debug('MAE_MLP:{}'.format(MAE_MLP))
 
-        MAE_RF = mean_absolute_percentage_error(Y_exp, y_pred)
-        console.print('RF')
-        console.print('Y_exp:{}'.format(Y_exp))
-        console.print('y_pred:{}'.format(y_pred))
-        console.print('MAE_RF:{}'.format(MAE_RF))
+            #Random Forest Regression
+            RF = RandomForestRegressor(
+            bootstrap = True,
+            ccp_alpha = 0.0,
+            criterion = 'squared_error',
+            max_depth = None,
+            max_features = 'auto',
+            max_leaf_nodes = None,
+            max_samples = None,
+            min_impurity_decrease = 0.0,
+            min_samples_leaf = 1,
+            min_samples_split = 2,
+            min_weight_fraction_leaf = 0.0,
+            n_estimators = 100,
+            n_jobs = -1,
+            oob_score = False,
+            random_state = None,
+            verbose = 0,
+            warm_start = False
+            )
 
-        predictions.append({
-            'MLR': MAE_MLR,
-            'MLP': MAE_MLP,
-            'RF': MAE_RF
-        })
+            RF.fit(
+                X, 
+                y
+            )
+
+            y_pred = RF.predict(X_exp)
+
+            MAE_RF = mean_absolute_percentage_error(Y_exp, y_pred)
+            logging.debug('RF')
+            logging.debug('Y_exp:{}'.format(Y_exp))
+            logging.debug('y_pred:{}'.format(y_pred))
+            logging.debug('MAE_RF:{}'.format(MAE_RF))
+
+            predictions.append({
+                'MLR': MAE_MLR,
+                'MLP': MAE_MLP,
+                'RF': MAE_RF
+            })
 
     dataframe_pred= pandas.DataFrame(predictions, columns=['MLR', 'MLP', 'RF'], index=filteredOutColumns)
-    console.print('dataframe_pred: {}'.format(dataframe_pred))
+    console.print('dataframe_pred:\n{}'.format(dataframe_pred))
 
     #we save the ML model that has minimum absolute error
-    minErrorML = 9999999
-    selectedModel = ''
-    for col in dataframe_pred.columns:
-        col_filter = dataframe_pred.loc[:,col]
-        if col_filter.max() < minErrorML:
-            minErrorML = col_filter.max()
-            selectedModel = col
+    model = bestModelSelection(dataframe_pred, df, bestHEMS['hems'], MUCH_BENCH_PMUS)
 
     data = {
-        'ML_MODEL': selectedModel,
+        'ML_MODEL': model,
         'BESTFIT_HEMS' : bestHEMS['hems'],
         'MUCH_BENCH_PMUS': MUCH_BENCH_PMUS,
         'HEMVectorMatrix': HEMVectorMatrix
@@ -1224,11 +1102,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG if args.debug == True else logging.ERROR)
-    print('CHECK!!!!!!!')
-    print('https://developer.arm.com/tools-and-software/simulation-models/cycle-models/knowledge-articles/using-the-arm-performance-monitor-unit-linux-driver')
-    # sudo perf stat -I 1000 -e cycles -a sleep 5
-    # https://man7.org/linux/man-pages/man1/perf-stat.1.html
-    # implement cycle based calculations ??????????? 
     if(not args.load):
         main()
     else:
